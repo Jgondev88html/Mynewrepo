@@ -1,6 +1,8 @@
 const WebSocket = require('ws');
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; 
+
 let wss;
+let activeUsers = new Set();
 
 function createWebSocketServer() {
   wss = new WebSocket.Server({ port: PORT });
@@ -8,29 +10,47 @@ function createWebSocketServer() {
   wss.on('connection', ws => {
     console.log('Nuevo cliente conectado');
 
-    wss.clients.forEach(client => {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send('¡Se ha conectado un nuevo cliente!');
-      }
-    });
-
     ws.on('message', message => {
       const data = JSON.parse(message);
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-          if (data.image) {
-            client.send(JSON.stringify({ username: data.username, image: data.image }));
-          } else {
-            client.send(JSON.stringify({ username: data.username, message: data.message }));
-          }
-        }
-      });
+
+      if (data.action === 'join') {
+        ws.username = data.username;
+        activeUsers.add(data.username);
+        broadcastUsers();
+      } else if (data.action === 'leave') {
+        activeUsers.delete(data.username);
+        broadcastUsers();
+      } else {
+        broadcastMessage(data);
+      }
     });
 
     ws.on('close', () => {
       console.log('Cliente desconectado');
+      if (ws.username) {
+        activeUsers.delete(ws.username);
+        broadcastUsers();
+      }
     });
   });
+
+  function broadcastUsers() {
+    const data = JSON.stringify({ action: 'updateUsers', users: Array.from(activeUsers) });
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(data);
+      }
+    });
+  }
+
+  function broadcastMessage(data) {
+    const message = JSON.stringify(data);
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
 
   console.log(`Servidor ejecutando en el puerto ${PORT}`);
 }
