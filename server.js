@@ -1,8 +1,11 @@
 const WebSocket = require('ws');
-const PORT = process.env.PORT || 3000; 
+const PORT = process.env.PORT || 3000;
 
 let wss;
 let activeUsers = new Set();
+
+// Lista de palabras inapropiadas
+const inappropriateWords = ['pinga', 'verga', 'culo', 'bollo', 'asesino', 'estupido', 'maricon', 'gay'];
 
 function createWebSocketServer() {
   wss = new WebSocket.Server({ port: PORT });
@@ -16,12 +19,18 @@ function createWebSocketServer() {
       if (data.action === 'join') {
         ws.username = data.username;
         activeUsers.add(data.username);
+        sendWelcomeMessage(data.username);
         broadcastUsers();
       } else if (data.action === 'leave') {
         activeUsers.delete(data.username);
         broadcastUsers();
       } else {
-        broadcastMessage(data);
+        if (containsInappropriateContent(data.message)) {
+          ws.send(JSON.stringify({ username: 'Bot', message: 'Tu mensaje contiene contenido inapropiado y ha sido eliminado.' }));
+          sendAlertMessage(ws.username, data.message);
+        } else {
+          broadcastMessage(data);
+        }
       }
     });
 
@@ -50,6 +59,33 @@ function createWebSocketServer() {
         client.send(message);
       }
     });
+  }
+
+  function sendWelcomeMessage(username) {
+    const message = JSON.stringify({ username: 'Bot', message: `Bienvenido, ${username}! a FriendlyChat, Chat para hacer amigos... (Funciones)=> 'Enviar mensajes', 'Responder mensajes tocando el mensaje que quiera responder', 'Enviar imagenes', 'Ver a los usuarios activos', 'Enviar emojis' Espero que el Chat sea de su agrado diviertese!` });
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  function sendAlertMessage(username, originalMessage) {
+    const message = JSON.stringify({ username: 'Bot', message: `El usuario ${username} ha intentado enviar un mensaje inapropiado: "${originalMessage}".` });
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  function containsInappropriateContent(message) {
+    for (let word of inappropriateWords) {
+      if (message.toLowerCase().includes(word)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   console.log(`Servidor ejecutando en el puerto ${PORT}`);
