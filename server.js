@@ -5,7 +5,7 @@ let wss;
 let activeUsers = new Set();
 
 // Lista de palabras inapropiadas
-const inappropriateWords = ['pinga', 'verga', 'culo', 'bollo', 'asesino', 'estupido', 'maricon', 'gay'];
+const inappropriateWords = ['pinga', 'verga', 'culo', 'bollo', 'asesino', 'estupido', 'maricon', 'gay', 'polla' 'mierda'];
 
 function createWebSocketServer() {
   wss = new WebSocket.Server({ port: PORT });
@@ -75,7 +75,7 @@ function createWebSocketServer() {
   }
 
   function sendWelcomeMessage(username) {
-    const message = JSON.stringify({ username: 'Bot', message: `Bienvenido, ${username}! a FriendlyChat, Chat para hacer amigos... (Funciones)=> 'Enviar mensajes', 'Responder mensajes tocando el mensaje que quiera responder', 'Enviar imagenes', 'Ver a los usuarios activos', 'Enviar emojis' Espero que el Chat sea de su agrado diviertese!` });
+    const message = JSON.stringify({ username: 'Bot🤖', message: `Bienvenido, ${username}! a FriendlyChat, Chat para hacer amigos🫂... (Funciones)=> 'Enviar mensajes', 'Responder mensajes tocando el mensaje que quiera responder💌', 'Enviar imagenes🏖️', 'Ver a los usuarios activos💬', 'Enviar emojis✅', 'Chat privado😁' Espero que el Chat sea de su agrado diviertese!` });
     wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(message);
