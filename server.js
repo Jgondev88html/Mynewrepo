@@ -29,7 +29,11 @@ function createWebSocketServer() {
           ws.send(JSON.stringify({ username: 'Bot', message: 'Tu mensaje contiene contenido inapropiado y ha sido eliminado.' }));
           sendAlertMessage(ws.username, data.message);
         } else {
-          broadcastMessage(data);
+          if (data.private && activeUsers.has(data.to)) {
+            sendPrivateMessage(data);
+          } else {
+            broadcastMessage(data);
+          }
         }
       }
     });
@@ -56,6 +60,15 @@ function createWebSocketServer() {
     const message = JSON.stringify(data);
     wss.clients.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  }
+
+  function sendPrivateMessage(data) {
+    const message = JSON.stringify(data);
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN && client.username === data.to) {
         client.send(message);
       }
     });
