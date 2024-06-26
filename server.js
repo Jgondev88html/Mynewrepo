@@ -5,7 +5,7 @@ let wss;
 let activeUsers = new Set();
 
 // Lista de palabras inapropiadas
-const inappropriateWords = ['pinga', 'verga', 'culo', 'bollo', 'asesino', 'estupido', 'maricon', 'gay', 'polla' 'mierda'];
+const inappropriateWords = ['pinga', 'verga', 'culo', 'bollo', 'asesino', 'estupido', 'maricon', 'gay', 'polla', 'mierda'];
 
 function createWebSocketServer() {
   wss = new WebSocket.Server({ port: PORT });
