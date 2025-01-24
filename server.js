@@ -75,15 +75,16 @@ app.post('/products', upload.single('image'), (req, res) => {
 // Ruta para eliminar un producto (solo admin)
 app.delete('/products/:id', (req, res) => {
   const productId = parseInt(req.params.id);
-  const productIndex = products.findIndex(product => product.id === productId);
-  
+  const productIndex = products.findIndex((product) => product.id === productId);
+
   if (productIndex === -1) {
-    return res.status(404).send('Producto no encontrado');
+    return res.status(404).json({ error: 'Producto no encontrado' });
   }
 
-  products.splice(productIndex, 1);  // Eliminar el producto
-  res.status(200).send('Producto eliminado');
+  products.splice(productIndex, 1);
+  res.status(200).json({ message: 'Producto eliminado' });
 });
+
 
 // Servir archivos estáticos (como imágenes)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
