@@ -1,114 +1,52 @@
+const express = require('express');
 const WebSocket = require('ws');
-const PORT = process.env.PORT || 3000;
+const cors = require('cors');
+const dotenv = require('dotenv');
 
-let wss;
-let activeUsers = new Set();
+// Cargar variables de entorno
+dotenv.config();
 
-// Lista de palabras inapropiadas
-const inappropriateWords = ['pinga', 'verga', 'culo', 'bollo', 'asesino', 'estupido', 'maricon', 'gay', 'polla', 'mierda'];
+const app = express();
+const port = process.env.PORT || 4000;
 
-function createWebSocketServer() {
-  wss = new WebSocket.Server({ port: PORT });
+app.use(cors());
+app.use(express.json());
 
-  wss.on('connection', ws => {
-    console.log('Nuevo cliente conectado');
+// Mock de usuario admin
+const users = [
+  { username: 'admin', password: 'admin123', role: 'admin' },
+  { username: 'user1', password: 'user123', role: 'user' },
+];
 
-    ws.on('message', message => {
-      const data = JSON.parse(message);
+// Ruta para el login
+app.post('/login', (req, res) => {
+  const { username, password } = req.body;
 
-      if (data.action === 'join') {
-        ws.username = data.username;
-        activeUsers.add(data.username);
-        sendWelcomeMessage(data.username);
-        broadcastUsers();
-      } else if (data.action === 'leave') {
-        activeUsers.delete(data.username);
-        broadcastUsers();
-      } else {
-        if (containsInappropriateContent(data.message)) {
-          ws.send(JSON.stringify({ username: 'Bot', message: 'Tu mensaje contiene contenido inapropiado y ha sido eliminado.' }));
-          sendAlertMessage(ws.username, data.message);
-        } else {
-          if (data.private && activeUsers.has(data.to)) {
-            sendPrivateMessage(data);
-          } else {
-            broadcastMessage(data);
-          }
-        }
-      }
-    });
+  const user = users.find(u => u.username === username && u.password === password);
+  if (user) {
+    res.json({ success: true, role: user.role });
+  } else {
+    res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+  }
+});
 
-    ws.on('close', () => {
-      console.log('Cliente desconectado');
-      if (ws.username) {
-        activeUsers.delete(ws.username);
-        broadcastUsers();
-      }
-    });
+// Crear servidor WebSocket
+const wss = new WebSocket.Server({ noServer: true });
+
+wss.on('connection', ws => {
+  ws.on('message', message => {
+    console.log('Mensaje recibido:', message);
+    ws.send('Mensaje recibido: ' + message);
   });
+});
 
-  function broadcastUsers() {
-    const data = JSON.stringify({ action: 'updateUsers', users: Array.from(activeUsers) });
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(data);
-      }
-    });
-  }
+app.server = app.listen(port, () => {
+  console.log(`Servidor escuchando en el puerto ${port}`);
+});
 
-  function broadcastMessage(data) {
-    const message = JSON.stringify(data);
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
-
-  function sendPrivateMessage(data) {
-    const message = JSON.stringify(data);
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN && client.username === data.to) {
-        client.send(message);
-      }
-    });
-  }
-
-  function sendWelcomeMessage(username) {
-    const message = JSON.stringify({ username: 'Bot', message: `Bienvenido, ${username}! a FriendlyChat, Chat para hacer amigos🫂... (Funciones)=> 'Enviar mensajes', 'Responder mensajes tocando el mensaje que quiera responder', 'Enviar imagenes', 'Ver a los usuarios activos', 'Enviar emojis', 'Chat privado' Espero que el Chat sea de su agrado diviertese!🤖💬` });
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
-
-  function sendAlertMessage(username, originalMessage) {
-    const message = JSON.stringify({ username: 'Bot', message: `El usuario ${username} ha intentado enviar un mensaje inapropiado.` });
-    wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  }
-
-  function containsInappropriateContent(message) {
-    for (let word of inappropriateWords) {
-      if (message.toLowerCase().includes(word)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  console.log(`Servidor ejecutando en el puerto ${PORT}`);
-}
-
-createWebSocketServer();
-
-wss.on('close', () => {
-  console.log('Conexión perdida. Intentando reconectar...');
-  setTimeout(() => {
-    createWebSocketServer();
-  }, 5000); // Intenta reconectar cada 5 segundos
+// Actualizar el servidor Express para manejar WebSocket
+app.server.on('upgrade', (request, socket, head) => {
+  wss.handleUpgrade(request, socket, head, ws => {
+    wss.emit('connection', ws, request);
+  });
 });
