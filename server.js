@@ -17,6 +17,7 @@ const ADMIN_TOKEN = 'admin-secret-token'; // Token simple para el administrador
 // Middleware para verificar si es administrador
 function isAdmin(req, res, next) {
   const token = req.headers.authorization; // El token se envía en los encabezados
+  console.log('Token recibido:', token); // Verificar el token recibido
   if (token === `Bearer ${ADMIN_TOKEN}`) {
     next(); // Si el token es correcto, continúa
   } else {
@@ -35,8 +36,9 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+// Asegúrate de que la carpeta 'uploads' exista
 if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads');
+  fs.mkdirSync('uploads', { recursive: true });
 }
 
 // Productos de ejemplo
@@ -46,10 +48,16 @@ let products = [
 ];
 
 // Rutas del API
+
+// Obtener productos
 app.get('/products', (req, res) => res.json(products));
 
-// Ruta para agregar un producto (protegida para admin)
+// Agregar un producto (protegido para admin)
 app.post('/products', isAdmin, upload.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Archivo de imagen no proporcionado' });
+  }
+
   const { name, price, description } = req.body;
   const imageUrl = `/uploads/${req.file.filename}`;
   const newProduct = { id: products.length + 1, name, price, description, imageUrl };
@@ -57,7 +65,7 @@ app.post('/products', isAdmin, upload.single('image'), (req, res) => {
   res.json(newProduct);
 });
 
-// Ruta para eliminar un producto (protegida para admin)
+// Eliminar un producto (protegido para admin)
 app.delete('/products/:id', isAdmin, (req, res) => {
   const productId = parseInt(req.params.id);
   const productIndex = products.findIndex(product => product.id === productId);
@@ -73,6 +81,6 @@ app.delete('/products/:id', isAdmin, (req, res) => {
 // Servir archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Servidor en el puerto 3000
+// Iniciar el servidor
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Servidor corriendo en el puerto ${port}`));
