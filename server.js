@@ -25,6 +25,10 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage: storage });
 
+// Usuario y contraseña del administrador
+const ADMIN_USER = 'Jhon';  // Nombre de usuario del administrador
+const ADMIN_PASSWORD = 'whoamiroot';  // Contraseña del administrador
+
 // Mock de productos
 let products = [
   { id: 1, name: 'Producto 1', price: 100, imageUrl: 'https://via.placeholder.com/150', description: 'Descripción del producto 1' },
@@ -38,13 +42,14 @@ app.get('/products', (req, res) => {
 
 // Ruta para agregar un producto (solo para admin)
 app.post('/products', upload.single('image'), (req, res) => {
-  const { name, price, description } = req.body;
-  const imageUrl = req.file ? `/uploads/${req.file.filename}` : ''; // Ruta de la imagen cargada
+  const { name, price, description, username, password } = req.body;
 
-  // Solo el admin tiene acceso a esta ruta
-  if (req.body.username !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Acceso denegado' });
+  // Validación de admin
+  if (username !== ADMIN_USER || password !== ADMIN_PASSWORD) {
+    return res.status(403).json({ success: false, message: 'Acceso denegado. Solo el administrador puede agregar productos.' });
   }
+
+  const imageUrl = req.file ? `/uploads/${req.file.filename}` : ''; // Ruta de la imagen cargada
 
   const newProduct = {
     id: products.length + 1,
@@ -61,10 +66,11 @@ app.post('/products', upload.single('image'), (req, res) => {
 // Ruta para borrar un producto (solo para admin)
 app.delete('/products/:id', (req, res) => {
   const { id } = req.params;
-  
-  // Solo el admin tiene acceso a esta ruta
-  if (req.body.username !== 'admin') {
-    return res.status(403).json({ success: false, message: 'Acceso denegado' });
+  const { username, password } = req.body;
+
+  // Validación de admin
+  if (username !== ADMIN_USER || password !== ADMIN_PASSWORD) {
+    return res.status(403).json({ success: false, message: 'Acceso denegado. Solo el administrador puede eliminar productos.' });
   }
 
   const productIndex = products.findIndex(product => product.id === parseInt(id));
