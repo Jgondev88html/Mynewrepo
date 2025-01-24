@@ -7,15 +7,22 @@ const fs = require('fs');
 const app = express();
 
 // Configuración de CORS
-app.use(cors());  // Permitir CORS para todos los orígenes
-// O, para permitir solo desde un origen específico:
-// app.use(cors({
-//     origin: 'http://127.0.0.1:5500' // Cambia esto a la URL de tu frontend
-// }));
-
-// Middleware para manejar datos JSON
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Simular datos de administrador
+const ADMIN_TOKEN = 'admin-secret-token'; // Token simple para el administrador
+
+// Middleware para verificar si es administrador
+function isAdmin(req, res, next) {
+  const token = req.headers.authorization; // El token se envía en los encabezados
+  if (token === `Bearer ${ADMIN_TOKEN}`) {
+    next(); // Si el token es correcto, continúa
+  } else {
+    res.status(403).json({ error: 'No autorizado' }); // Si no, devuelve un error
+  }
+}
 
 // Configuración de multer para subir imágenes
 const storage = multer.diskStorage({
@@ -26,56 +33,34 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + path.extname(file.originalname));
   }
 });
-
 const upload = multer({ storage: storage });
 
-// Asegúrate de que la carpeta 'uploads' exista
 if (!fs.existsSync('uploads')) {
   fs.mkdirSync('uploads');
 }
 
 // Productos de ejemplo
 let products = [
-  {
-    id: 1,
-    name: "Producto 1",
-    price: 20,
-    imageUrl: "/uploads/1648772012327.jpg",  // Aquí puedes poner la imagen por defecto
-    description: "Descripción del Producto 1"
-  },
-  {
-    id: 2,
-    name: "Producto 2",
-    price: 35,
-    imageUrl: "/uploads/1648772022327.jpg",  // Cambiar a la ruta de tus imágenes
-    description: "Descripción del Producto 2"
-  }
+  { id: 1, name: 'Producto 1', price: 20, imageUrl: '/uploads/example1.jpg', description: 'Descripción 1' },
+  { id: 2, name: 'Producto 2', price: 35, imageUrl: '/uploads/example2.jpg', description: 'Descripción 2' },
 ];
 
-// Ruta para obtener los productos
-app.get('/products', (req, res) => {
-  res.json(products);
-});
+// Rutas del API
+app.get('/products', (req, res) => res.json(products));
 
-// Ruta para agregar un producto (solo admin)
-app.post('/products', upload.single('image'), (req, res) => {
+// Ruta para agregar un producto (protegida para admin)
+app.post('/products', isAdmin, upload.single('image'), (req, res) => {
   const { name, price, description } = req.body;
-  const imageUrl = `/uploads/${req.file.filename}`;  // Ruta de la imagen subida
-  const newProduct = {
-    id: products.length + 1,
-    name,
-    price,
-    description,
-    imageUrl
-  };
+  const imageUrl = `/uploads/${req.file.filename}`;
+  const newProduct = { id: products.length + 1, name, price, description, imageUrl };
   products.push(newProduct);
   res.json(newProduct);
 });
 
-// Ruta para eliminar un producto (solo admin)
-app.delete('/products/:id', (req, res) => {
+// Ruta para eliminar un producto (protegida para admin)
+app.delete('/products/:id', isAdmin, (req, res) => {
   const productId = parseInt(req.params.id);
-  const productIndex = products.findIndex((product) => product.id === productId);
+  const productIndex = products.findIndex(product => product.id === productId);
 
   if (productIndex === -1) {
     return res.status(404).json({ error: 'Producto no encontrado' });
@@ -85,12 +70,9 @@ app.delete('/products/:id', (req, res) => {
   res.status(200).json({ message: 'Producto eliminado' });
 });
 
-
-// Servir archivos estáticos (como imágenes)
+// Servir archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Iniciar el servidor
+// Servidor en el puerto 3000
 const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`Servidor corriendo en el puerto ${port}`);
-});
+app.listen(port, () => console.log(`Servidor corriendo en el puerto ${port}`));
