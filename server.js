@@ -11,12 +11,15 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 
+const cors = require('cors');
+
+// Permitir CORS de cualquier origen (esto es útil durante el desarrollo)
 app.use(cors({
-  origin: 'http://127.0.0.1:5500',  // Permitir solo tu frontend local
+  origin: '*',  // Permite todos los orígenes (para pruebas locales)
   methods: ['GET', 'POST', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+
 
 // Configuración de almacenamiento con multer
 const storage = multer.diskStorage({
