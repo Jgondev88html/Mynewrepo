@@ -3,7 +3,6 @@ const WebSocket = require('ws');
 const cors = require('cors');
 const dotenv = require('dotenv');
 
-// Cargar variables de entorno
 dotenv.config();
 
 const app = express();
@@ -18,6 +17,12 @@ const users = [
   { username: 'user1', password: 'user123', role: 'user' },
 ];
 
+// Mock de productos
+let products = [
+  { id: 1, name: 'Producto 1', price: 100 },
+  { id: 2, name: 'Producto 2', price: 150 },
+];
+
 // Ruta para el login
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -28,6 +33,19 @@ app.post('/login', (req, res) => {
   } else {
     res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
   }
+});
+
+// Ruta para obtener los productos
+app.get('/products', (req, res) => {
+  res.json(products);
+});
+
+// Ruta para agregar un producto (solo para admin)
+app.post('/products', (req, res) => {
+  const { name, price } = req.body;
+  const newProduct = { id: products.length + 1, name, price };
+  products.push(newProduct);
+  res.json(newProduct);
 });
 
 // Crear servidor WebSocket
