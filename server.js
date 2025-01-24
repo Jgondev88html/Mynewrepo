@@ -1,4 +1,6 @@
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
 const WebSocket = require('ws');
 const cors = require('cors');
 const dotenv = require('dotenv');
@@ -11,41 +13,68 @@ const port = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-// Mock de usuario admin
-const users = [
-  { username: 'admin', password: 'admin123', role: 'admin' },
-  { username: 'user1', password: 'user123', role: 'user' },
-];
-
-// Mock de productos
-let products = [
-  { id: 1, name: 'Producto 1', price: 100 },
-  { id: 2, name: 'Producto 2', price: 150 },
-];
-
-// Ruta para el login
-app.post('/login', (req, res) => {
-  const { username, password } = req.body;
-
-  const user = users.find(u => u.username === username && u.password === password);
-  if (user) {
-    res.json({ success: true, role: user.role });
-  } else {
-    res.status(401).json({ success: false, message: 'Usuario o contraseña incorrectos' });
+// Configuración de almacenamiento con multer
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, './uploads'); // Carpeta donde se almacenarán las imágenes
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Asignar un nombre único al archivo
   }
 });
 
-// Ruta para obtener los productos
+const upload = multer({ storage: storage });
+
+// Mock de productos
+let products = [
+  { id: 1, name: 'Producto 1', price: 100, imageUrl: 'https://via.placeholder.com/150', description: 'Descripción del producto 1' },
+  { id: 2, name: 'Producto 2', price: 150, imageUrl: 'https://via.placeholder.com/150', description: 'Descripción del producto 2' },
+];
+
+// Ruta para obtener los productos (pública)
 app.get('/products', (req, res) => {
   res.json(products);
 });
 
 // Ruta para agregar un producto (solo para admin)
-app.post('/products', (req, res) => {
-  const { name, price } = req.body;
-  const newProduct = { id: products.length + 1, name, price };
+app.post('/products', upload.single('image'), (req, res) => {
+  const { name, price, description } = req.body;
+  const imageUrl = req.file ? `/uploads/${req.file.filename}` : ''; // Ruta de la imagen cargada
+
+  // Solo el admin tiene acceso a esta ruta
+  if (req.body.username !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Acceso denegado' });
+  }
+
+  const newProduct = {
+    id: products.length + 1,
+    name,
+    price,
+    imageUrl,
+    description,
+  };
+
   products.push(newProduct);
   res.json(newProduct);
+});
+
+// Ruta para borrar un producto (solo para admin)
+app.delete('/products/:id', (req, res) => {
+  const { id } = req.params;
+  
+  // Solo el admin tiene acceso a esta ruta
+  if (req.body.username !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Acceso denegado' });
+  }
+
+  const productIndex = products.findIndex(product => product.id === parseInt(id));
+
+  if (productIndex !== -1) {
+    products.splice(productIndex, 1); // Eliminar el producto
+    res.json({ success: true, message: 'Producto eliminado con éxito' });
+  } else {
+    res.status(404).json({ success: false, message: 'Producto no encontrado' });
+  }
 });
 
 // Crear servidor WebSocket
