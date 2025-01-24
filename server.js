@@ -4,6 +4,7 @@ const path = require('path');
 const WebSocket = require('ws');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const fs = require('fs');
 
 dotenv.config();
 
@@ -33,11 +34,23 @@ const upload = multer({ storage: storage });
 const ADMIN_USER = 'admin';  // Nombre de usuario del administrador
 const ADMIN_PASSWORD = 'admin123';  // Contraseña del administrador
 
-// Mock de productos
-let products = [
-  { id: 1, name: 'Producto 1', price: 100, imageUrl: 'https://via.placeholder.com/150', description: 'Descripción del producto 1' },
-  { id: 2, name: 'Producto 2', price: 150, imageUrl: 'https://via.placeholder.com/150', description: 'Descripción del producto 2' },
-];
+// Función para cargar productos desde un archivo
+const loadProducts = () => {
+  try {
+    const data = fs.readFileSync('./products.json', 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    return []; // Si no hay archivo, devolver un arreglo vacío
+  }
+};
+
+// Función para guardar productos en un archivo
+const saveProducts = (products) => {
+  fs.writeFileSync('./products.json', JSON.stringify(products, null, 2));
+};
+
+// Obtener los productos desde el archivo
+let products = loadProducts();
 
 // Ruta para obtener los productos (pública)
 app.get('/products', (req, res) => {
@@ -64,6 +77,7 @@ app.post('/products', upload.single('image'), (req, res) => {
   };
 
   products.push(newProduct);
+  saveProducts(products); // Guardar los productos actualizados en el archivo
   res.json(newProduct);
 });
 
@@ -81,6 +95,7 @@ app.delete('/products/:id', (req, res) => {
 
   if (productIndex !== -1) {
     products.splice(productIndex, 1); // Eliminar el producto
+    saveProducts(products); // Guardar los productos actualizados en el archivo
     res.json({ success: true, message: 'Producto eliminado con éxito' });
   } else {
     res.status(404).json({ success: false, message: 'Producto no encontrado' });
