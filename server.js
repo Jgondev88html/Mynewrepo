@@ -10,7 +10,11 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 
-app.use(cors());
+app.use(cors({
+  origin: 'http://127.0.0.1:5500',  // Permitir solo tu frontend local
+  methods: ['GET', 'POST', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // Configuración de almacenamiento con multer
@@ -26,8 +30,8 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 // Usuario y contraseña del administrador
-const ADMIN_USER = 'Jhon';  // Nombre de usuario del administrador
-const ADMIN_PASSWORD = 'whoamiroot';  // Contraseña del administrador
+const ADMIN_USER = 'admin';  // Nombre de usuario del administrador
+const ADMIN_PASSWORD = 'admin123';  // Contraseña del administrador
 
 // Mock de productos
 let products = [
