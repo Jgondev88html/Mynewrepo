@@ -22,10 +22,7 @@ const upload = multer({ storage });
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
 // Productos de ejemplo
-let products = [
-  { id: 1, name: 'Producto 1', price: 20, imageUrl: '/uploads/example1.jpg', description: 'Descripción 1' },
-  { id: 2, name: 'Producto 2', price: 35, imageUrl: '/uploads/example2.jpg', description: 'Descripción 2' },
-];
+let products = [];
 
 // Ruta de autenticación para el administrador
 app.post('/login', (req, res) => {
