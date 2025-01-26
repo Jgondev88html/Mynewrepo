@@ -8,9 +8,29 @@ const app = express();
 const ADMIN_PASSWORD = 'admin-password'; // Cambia esta contraseña por una más segura
 const ADMIN_TOKEN = 'admin-secret-token'; // Token fijo para autenticar
 
+const visitCountFilePath = 'visitCount.json';
+
+// Configuración de CORS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Inicializar contador de visitas desde el archivo visitCount.json
+let visitCount = 0;
+if (fs.existsSync(visitCountFilePath)) {
+  const data = fs.readFileSync(visitCountFilePath);
+  visitCount = JSON.parse(data).count;
+}
+
+// Middleware para incrementar el contador de visitas
+app.use((req, res, next) => {
+  visitCount += 1;
+  fs.writeFileSync(visitCountFilePath, JSON.stringify({ count: visitCount }));
+  next();
+});
+
+// Productos de ejemplo
+let products = [];
 
 // Configuración de multer para subir imágenes
 const storage = multer.diskStorage({
@@ -21,37 +41,12 @@ const upload = multer({ storage });
 
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
-// Productos de ejemplo
-let products = [];
-
-let visitCount = 0;
-
-// Ruta para leer el número de visitas desde el archivo `visitCount.json`
-fs.readFile('visitCount.json', (err, data) => {
-  if (err) {
-    // Si el archivo no existe, crear uno con el contador en cero
-    visitCount = 0;
-    fs.writeFileSync('visitCount.json', JSON.stringify({ count: visitCount }));
-  } else {
-    // Si el archivo existe, leer el número de visitas
-    visitCount = JSON.parse(data).count;
-  }
-});
-
-// Middleware que se ejecuta en cada solicitud para incrementar el contador de visitas
-app.use((req, res, next) => {
-  visitCount += 1;
-  // Guardar el contador actualizado en el archivo `visitCount.json`
-  fs.writeFileSync('visitCount.json', JSON.stringify({ count: visitCount }));
-  next(); // Continúa con la ejecución de las demás rutas
-});
-
 // Ruta para obtener el número de visitas
 app.get('/visit-count', (req, res) => {
   res.json({ count: visitCount });
 });
 
-// Ruta de autenticación para el administrador
+// Ruta para autenticación de administrador
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
@@ -60,7 +55,6 @@ app.post('/login', (req, res) => {
     res.status(401).json({ error: 'Contraseña incorrecta' });
   }
 });
-let visitCount = 0; // Contador de visitas
 
 // Middleware para verificar si el usuario es administrador
 const isAdmin = (req, res, next) => {
@@ -95,9 +89,11 @@ app.delete('/products/:id', isAdmin, (req, res) => {
   res.status(200).json({ message: 'Producto eliminado' });
 });
 
-// Servir archivos estáticos
+// Servir archivos estáticos (para las imágenes de productos)
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Iniciar servidor
 const port = process.env.PORT || 5500;
-app.listen(port, () => console.log(`Servidor corriendo en el puerto ${port}`));
+app.listen(port, () => {
+  console.log(`Servidor corriendo en el puerto ${port}`);
+});
