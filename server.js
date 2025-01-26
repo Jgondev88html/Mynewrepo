@@ -35,17 +35,6 @@ app.post('/login', (req, res) => {
 });
 let visitCount = 0; // Contador de visitas
 
-// Ruta para obtener el número de visitas
-app.get('/visit-count', (req, res) => {
-  visitCount++;  // Incrementamos el contador de visitas
-  res.json({ visits: visitCount });
-});
-
-// Ruta principal de la página
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html')); // Asegúrate de tener un archivo index.html
-});
-
 // Middleware para verificar si el usuario es administrador
 const isAdmin = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
