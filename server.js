@@ -46,8 +46,8 @@ wss.on('connection', (ws) => {
       if (waitingPlayer && waitingPlayer !== player) {
         player.opponent = waitingPlayer;
         waitingPlayer.opponent = player;
-        waitingPlayer.ws.send(JSON.stringify({ action: 'matched', opponent: player.username }));
-        player.ws.send(JSON.stringify({ action: 'matched', opponent: waitingPlayer.username }));
+        waitingPlayer.ws.send(JSON.stringify({ action: 'matchRequest', opponent: player.username }));
+        player.ws.send(JSON.stringify({ action: 'matchRequest', opponent: waitingPlayer.username }));
         waitingPlayer = null; // Emparejado, ya no está esperando
       } else {
         waitingPlayer = player; // Poner al jugador en espera
@@ -85,12 +85,37 @@ wss.on('connection', (ws) => {
         );
       }
 
-      // Actualizar intentos
+      // **Restar intentos**
       player.intentos--;
       player.opponent.intentos--;
-      if (player.intentos === 0 || player.opponent.intentos === 0) {
+
+      // **Comprobar si los intentos se han agotado**
+      if (player.intentos <= 0 || player.opponent.intentos <= 0) {
+        // Si se agotan los intentos, el juego termina
         player.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.monedas }));
         player.opponent.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.opponent.monedas }));
+        player.intentos = 0; // Para evitar que continúen jugando
+        player.opponent.intentos = 0;
+      } else {
+        // Si aún tienen intentos, enviar la actualización
+        ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.intentos }));
+        player.opponent.ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.opponent.intentos }));
+      }
+    }
+
+    // **RESPONDER INVITACION**
+    if (data.action === 'responseToMatch') {
+      const response = data.response;
+      if (response === 'accept' && player.opponent) {
+        player.opponent.ws.send(JSON.stringify({ action: 'matchAccepted', opponent: player.username }));
+        player.ws.send(JSON.stringify({ action: 'matchAccepted', opponent: player.opponent.username }));
+        player.intentos = 3;
+        player.opponent.intentos = 3;
+        status.textContent = 'Juego Iniciado';
+      } else {
+        player.opponent.ws.send(JSON.stringify({ action: 'matchRejected', opponent: player.username }));
+        player.ws.send(JSON.stringify({ action: 'matchRejected', opponent: player.opponent.username }));
+        player.opponent = null;
       }
     }
   });
