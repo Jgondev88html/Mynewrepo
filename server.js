@@ -5,41 +5,21 @@ const multer = require('multer');
 const fs = require('fs');
 
 const app = express();
+const ADMIN_PASSWORD = 'admin-password'; // Cambia esta contraseña por una más segura
+const ADMIN_TOKEN = 'admin-secret-token'; // Token fijo para autenticar
 
-// Configuración de CORS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Simular datos de administrador
-const ADMIN_TOKEN = 'admin-secret-token'; // Token simple para el administrador
-
-// Middleware para verificar si es administrador
-function isAdmin(req, res, next) {
-  const token = req.headers.authorization; // El token se envía en los encabezados
-  console.log('Token recibido:', token); // Verificar el token recibido
-  if (token === `Bearer ${ADMIN_TOKEN}`) {
-    next(); // Si el token es correcto, continúa
-  } else {
-    res.status(403).json({ error: 'No autorizado' }); // Si no, devuelve un error
-  }
-}
-
 // Configuración de multer para subir imágenes
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname));
-  }
+  destination: (req, file, cb) => cb(null, 'uploads/'),
+  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
 });
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-// Asegúrate de que la carpeta 'uploads' exista
-if (!fs.existsSync('uploads')) {
-  fs.mkdirSync('uploads', { recursive: true });
-}
+if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
 // Productos de ejemplo
 let products = [
@@ -47,17 +27,30 @@ let products = [
   { id: 2, name: 'Producto 2', price: 35, imageUrl: '/uploads/example2.jpg', description: 'Descripción 2' },
 ];
 
-// Rutas del API
+// Ruta de autenticación para el administrador
+app.post('/login', (req, res) => {
+  const { password } = req.body;
+  if (password === ADMIN_PASSWORD) {
+    res.json({ token: ADMIN_TOKEN });
+  } else {
+    res.status(401).json({ error: 'Contraseña incorrecta' });
+  }
+});
 
-// Obtener productos
+// Middleware para verificar si el usuario es administrador
+const isAdmin = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token === ADMIN_TOKEN) {
+    next();
+  } else {
+    res.status(403).json({ error: 'No autorizado' });
+  }
+};
+
+// Rutas para manejar productos
 app.get('/products', (req, res) => res.json(products));
 
-// Agregar un producto (protegido para admin)
 app.post('/products', isAdmin, upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'Archivo de imagen no proporcionado' });
-  }
-
   const { name, price, description } = req.body;
   const imageUrl = `/uploads/${req.file.filename}`;
   const newProduct = { id: products.length + 1, name, price, description, imageUrl };
@@ -65,7 +58,6 @@ app.post('/products', isAdmin, upload.single('image'), (req, res) => {
   res.json(newProduct);
 });
 
-// Eliminar un producto (protegido para admin)
 app.delete('/products/:id', isAdmin, (req, res) => {
   const productId = parseInt(req.params.id);
   const productIndex = products.findIndex(product => product.id === productId);
@@ -81,6 +73,6 @@ app.delete('/products/:id', isAdmin, (req, res) => {
 // Servir archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Iniciar el servidor
+// Iniciar servidor
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Servidor corriendo en el puerto ${port}`));
