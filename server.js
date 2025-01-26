@@ -74,5 +74,5 @@ app.delete('/products/:id', isAdmin, (req, res) => {
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Iniciar servidor
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5500;
 app.listen(port, () => console.log(`Servidor corriendo en el puerto ${port}`));
