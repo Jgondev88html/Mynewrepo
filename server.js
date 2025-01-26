@@ -53,13 +53,13 @@ app.get('/visit-count', (req, res) => {
   res.json({ count: visitCount });
 });
 
-// Ruta para verificar la contraseña de administrador
-app.post('/verifyPassword', (req, res) => {
+// Ruta de autenticación para el administrador
+app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
-    res.json({ success: true });
+    res.json({ token: ADMIN_TOKEN });
   } else {
-    res.status(401).json({ success: false, error: 'Contraseña incorrecta' });
+    res.status(401).json({ error: 'Contraseña incorrecta' });
   }
 });
 
