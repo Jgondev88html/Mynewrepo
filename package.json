@@ -1,15 +1,19 @@
 {
-  "name": "juego-apuestas",
+  "name": "juego-apuestas-multijugador",
   "version": "1.0.0",
-  "description": "Servidor para juego de apuestas usando WebSocket y Express",
+  "description": "Un juego de apuestas multijugador con WebSocket.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "author": "Tu nombre o nombre del proyecto",
-  "license": "MIT",
   "dependencies": {
-    "ws": "^8.7.0",
-    "express": "^4.18.2"
-  }
+    "express": "^4.18.2",
+    "ws": "^8.13.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }
