@@ -24,6 +24,33 @@ if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 // Productos de ejemplo
 let products = [];
 
+let visitCount = 0;
+
+// Ruta para leer el número de visitas desde el archivo `visitCount.json`
+fs.readFile('visitCount.json', (err, data) => {
+  if (err) {
+    // Si el archivo no existe, crear uno con el contador en cero
+    visitCount = 0;
+    fs.writeFileSync('visitCount.json', JSON.stringify({ count: visitCount }));
+  } else {
+    // Si el archivo existe, leer el número de visitas
+    visitCount = JSON.parse(data).count;
+  }
+});
+
+// Middleware que se ejecuta en cada solicitud para incrementar el contador de visitas
+app.use((req, res, next) => {
+  visitCount += 1;
+  // Guardar el contador actualizado en el archivo `visitCount.json`
+  fs.writeFileSync('visitCount.json', JSON.stringify({ count: visitCount }));
+  next(); // Continúa con la ejecución de las demás rutas
+});
+
+// Ruta para obtener el número de visitas
+app.get('/visit-count', (req, res) => {
+  res.json({ count: visitCount });
+});
+
 // Ruta de autenticación para el administrador
 app.post('/login', (req, res) => {
   const { password } = req.body;
