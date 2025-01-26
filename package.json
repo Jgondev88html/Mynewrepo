@@ -1,7 +1,6 @@
 {
-  "name": "game-server",
+  "name": "websocket-server",
   "version": "1.0.0",
-  "description": "Servidor WebSocket para juego de apuestas",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,6 +8,7 @@
   "dependencies": {
     "ws": "^8.7.0"
   },
-  "author": "",
-  "license": "ISC"
+  "engines": {
+    "node": "14.x"
+  }
 }
