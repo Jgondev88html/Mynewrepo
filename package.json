@@ -1,7 +1,7 @@
 {
   "name": "juego-apuestas",
   "version": "1.0.0",
-  "description": "Servidor para juego de apuestas usando WSS y HTTPS",
+  "description": "Servidor para juego de apuestas usando WebSocket y Express",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,7 +10,6 @@
   "license": "MIT",
   "dependencies": {
     "ws": "^8.7.0",
-    "https": "^1.0.0",
-    "fs": "^0.0.1"
+    "express": "^4.18.2"
   }
 }
