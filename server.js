@@ -1,16 +1,22 @@
+require('dotenv').config();
+const mongoose = require('mongoose');
 const WebSocket = require('ws');
 const http = require('http');
-const mongoose = require('mongoose');
 const User = require('./models/User');
-require('dotenv').config();
+
+// Deshabilitar la advertencia de `strictQuery`
+mongoose.set('strictQuery', false);
 
 // Conexión a MongoDB
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost/juego_apuestas', {
     useNewUrlParser: true,
-    useUnifiedTopology: true
+    useUnifiedTopology: true,
 })
     .then(() => console.log('Conectado a la base de datos'))
-    .catch((err) => console.log('Error al conectar a la base de datos', err));
+    .catch((err) => {
+        console.log('Error al conectar a la base de datos', err);
+        process.exit(1); // Salir si no se puede conectar a la base de datos
+    });
 
 const server = http.createServer();
 const wss = new WebSocket.Server({ server });
