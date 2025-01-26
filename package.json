@@ -1,19 +1,18 @@
 {
-  "name": "juego-apuestas-multijugador",
+  "name": "game-server",
   "version": "1.0.0",
-  "description": "Un juego de apuestas multijugador con WebSocket.",
+  "description": "Juego de apuestas multijugador con WebSocket",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.13.0"
+    "ws": "^8.7.0"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": "16.x"
   },
-  "keywords": [],
   "author": "",
   "license": "ISC"
 }
