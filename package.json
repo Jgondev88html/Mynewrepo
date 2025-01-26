@@ -1,19 +1,16 @@
 {
   "name": "juego-apuestas",
   "version": "1.0.0",
-  "description": "Servidor WebSocket para el juego de apuestas entre usuarios",
+  "description": "Servidor para juego de apuestas usando WSS y HTTPS",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "author": "Tu nombre o nombre del proyecto",
+  "license": "MIT",
   "dependencies": {
-    "ws": "^8.8.0",
-    "mongoose": "^6.0.0",
-    "dotenv": "^10.0.0"
-  },
-  "engines": {
-    "node": ">=14.0.0"
-  },
-  "author": "",
-  "license": "ISC"
+    "ws": "^8.7.0",
+    "https": "^1.0.0",
+    "fs": "^0.0.1"
+  }
 }
