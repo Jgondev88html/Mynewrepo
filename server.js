@@ -8,29 +8,9 @@ const app = express();
 const ADMIN_PASSWORD = 'admin-password'; // Cambia esta contraseña por una más segura
 const ADMIN_TOKEN = 'admin-secret-token'; // Token fijo para autenticar
 
-const visitCountFilePath = 'visitCount.json';
-
-// Configuración de CORS
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// Inicializar contador de visitas desde el archivo visitCount.json
-let visitCount = 0;
-if (fs.existsSync(visitCountFilePath)) {
-  const data = fs.readFileSync(visitCountFilePath);
-  visitCount = JSON.parse(data).count;
-}
-
-// Middleware para incrementar el contador de visitas
-app.use((req, res, next) => {
-  visitCount += 1;
-  fs.writeFileSync(visitCountFilePath, JSON.stringify({ count: visitCount }));
-  next();
-});
-
-// Productos de ejemplo
-let products = [];
 
 // Configuración de multer para subir imágenes
 const storage = multer.diskStorage({
@@ -41,12 +21,39 @@ const upload = multer({ storage });
 
 if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
 
+// Productos de ejemplo
+let products = [];
+
+// Ruta del archivo de visitas
+const visitCountFilePath = 'visitCount.json';
+
+// Contador de visitas, inicializado desde el archivo
+let visitCount = 0;
+fs.readFile(visitCountFilePath, (err, data) => {
+  if (err) {
+    // Si el archivo no existe, crearlo con el contador en cero
+    visitCount = 0;
+    fs.writeFileSync(visitCountFilePath, JSON.stringify({ count: visitCount }));
+  } else {
+    // Si el archivo existe, leer el contador de visitas
+    visitCount = JSON.parse(data).count;
+  }
+});
+
+// Middleware que incrementa el contador de visitas
+app.use((req, res, next) => {
+  visitCount += 1;
+  // Guardar el contador actualizado en el archivo visitCount.json
+  fs.writeFileSync(visitCountFilePath, JSON.stringify({ count: visitCount }));
+  next();
+});
+
 // Ruta para obtener el número de visitas
 app.get('/visit-count', (req, res) => {
   res.json({ count: visitCount });
 });
 
-// Ruta para autenticación de administrador
+// Ruta de autenticación para el administrador
 app.post('/login', (req, res) => {
   const { password } = req.body;
   if (password === ADMIN_PASSWORD) {
@@ -89,11 +96,9 @@ app.delete('/products/:id', isAdmin, (req, res) => {
   res.status(200).json({ message: 'Producto eliminado' });
 });
 
-// Servir archivos estáticos (para las imágenes de productos)
+// Servir archivos estáticos
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Iniciar servidor
 const port = process.env.PORT || 5500;
-app.listen(port, () => {
-  console.log(`Servidor corriendo en el puerto ${port}`);
-});
+app.listen(port, () => console.log(`Servidor corriendo en el puerto ${port}`));
