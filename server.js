@@ -9,12 +9,10 @@ app.use(express.static('public'));
 // Crear el servidor WebSocket
 const wss = new WebSocket.Server({ noServer: true });
 
-// Lista para almacenar los usuarios activos
-let activeUsers = [];
+// Lista para almacenar los usuarios activos y sus datos
+let activeUsers = {};
 
 wss.on('connection', (ws) => {
-    let userCoins = 100; // Monedas iniciales
-    let userAttempts = 5; // Intentos iniciales
     let username = null;
 
     console.log('Cliente conectado');
@@ -25,31 +23,47 @@ wss.on('connection', (ws) => {
 
         // Login del jugador
         if (data.type === 'login') {
-            if (activeUsers.includes(data.username)) {
+            if (activeUsers[data.username]) {
                 // Si el usuario ya está logueado, enviamos un error
                 ws.send(JSON.stringify({ type: 'loginError', message: 'Este nombre de usuario ya está en uso.' }));
             } else {
                 // Si no está en uso, lo agregamos a la lista de usuarios activos
                 username = data.username;
-                activeUsers.push(username);
+                activeUsers[username] = {
+                    coins: 100,      // Monedas iniciales
+                    attempts: 5,     // Intentos iniciales
+                };
                 console.log(`Usuario ${username} ha iniciado sesión`);
-                ws.send(JSON.stringify({ type: 'loginSuccess', coins: userCoins, attempts: userAttempts }));
+                ws.send(JSON.stringify({ type: 'loginSuccess', coins: 100, attempts: 5 }));
                 broadcastActiveUsers();
             }
         }
 
         // Juego - Adivina el número
-        if (data.type === 'guess') {
+        if (data.type === 'guess' && username) {
+            const bet = data.bet; // Apuesta en número
+            const randomNumber = Math.floor(Math.random() * 5) + 1; // Número aleatorio entre 1 y 5
+
+            let userCoins = activeUsers[username].coins;
+            let userAttempts = activeUsers[username].attempts;
+
             if (userAttempts > 0) {
-                const bet = data.bet; // Apuesta en número
-                const randomNumber = Math.floor(Math.random() * 5) + 1; // Número aleatorio entre 1 y 5
                 userAttempts -= 1; // Restamos un intento
 
                 if (bet === randomNumber) {
                     const winAmount = randomNumber * 2; // El jugador gana el doble del número que adivina
                     userCoins += winAmount;
+
+                    // Actualizamos los datos del usuario
+                    activeUsers[username].coins = userCoins;
+                    activeUsers[username].attempts = userAttempts;
+
                     ws.send(JSON.stringify({ type: 'result', win: true, amount: winAmount, newCoins: userCoins, remainingAttempts: userAttempts }));
                 } else {
+                    // Actualizamos los datos del usuario
+                    activeUsers[username].coins = userCoins;
+                    activeUsers[username].attempts = userAttempts;
+
                     ws.send(JSON.stringify({ type: 'result', win: false, number: randomNumber, newCoins: userCoins, remainingAttempts: userAttempts }));
                 }
             } else {
@@ -62,7 +76,7 @@ wss.on('connection', (ws) => {
     ws.on('close', () => {
         console.log('Cliente desconectado');
         if (username) {
-            activeUsers = activeUsers.filter(user => user !== username);
+            delete activeUsers[username];
             broadcastActiveUsers();
         }
     });
@@ -71,7 +85,7 @@ wss.on('connection', (ws) => {
     function broadcastActiveUsers() {
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({ type: 'activeUsers', users: activeUsers }));
+                client.send(JSON.stringify({ type: 'activeUsers', users: Object.keys(activeUsers) }));
             }
         });
     }
