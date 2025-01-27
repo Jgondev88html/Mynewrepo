@@ -21,58 +21,50 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     const data = JSON.parse(message);
 
-    // Acción de login de usuario
     if (data.type === 'login') {
+      // Verificamos si el usuario ya está logueado
       if (users[data.username]) {
         ws.send(JSON.stringify({ type: 'error', message: 'El usuario ya está registrado. Elija otro nombre.' }));
       } else {
+        // Si el usuario no está registrado, lo registramos
         users[data.username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 };
         console.log(`Usuario ${data.username} conectado`);
-        ws.send(JSON.stringify({ type: 'loginSuccess', username: data.username, coins: 0, attempts: 3, ganados: 0, perdidos: 0 }));
+        ws.send(JSON.stringify({ type: 'loginSuccess', username: data.username }));
       }
     }
 
-  // Esta es la función que maneja la acción de jugar (probablemente algo como esto)
-if (data.type === 'gameAction') {
-  const username = data.username;
-  
-  // Generar una cantidad aleatoria de monedas entre 0 y 70
-  const coinsWon = Math.floor(Math.random() * 71);  // Esto genera un número entre 0 y 70 (inclusive)
-  
-  // Obtener el estado del jugador
-  const user = users[username];
-  if (user) {
-    // Añadir las monedas ganadas al total
-    user.coins += coinsWon;
+    if (data.type === 'gameAction') {
+      const user = users[data.username];
+      if (user && user.attempts > 0) {
+        user.attempts--;
+        
+        // Generar una cantidad aleatoria de monedas entre 0 y 70
+        const coinsWon = Math.floor(Math.random() * 71);  // Genera un número entre 0 y 70
 
-    // Actualizar el número de intentos (puedes hacer lo que quieras aquí con los intentos)
-    user.attempts -= 1;
+        // Decidir si ganar o perder monedas
+        const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
 
-    // Enviar los datos actualizados al cliente
-    ws.send(JSON.stringify({
-      type: 'updateStatus',
-      coins: user.coins,
-      attempts: user.attempts,
-      ganados: user.ganados,
-      perdidos: user.perdidos
-    }));
-  }
-}
+        if (resultado === 'ganado') {
+          user.coins += coinsWon;
+          user.ganados += coinsWon;
+        } else {
+          user.coins -= 5;
+          user.perdidos += 5;
+        }
 
+        // Enviar el estado actualizado al cliente
+        ws.send(JSON.stringify({
+          type: 'updateStatus',
+          coins: user.coins,
+          attempts: user.attempts,
+          ganados: user.ganados,
+          perdidos: user.perdidos
+        }));
+      }
+    }
 
-    // Enviar el estado actualizado al cliente
-    ws.send(JSON.stringify({
-      type: 'updateStatus',
-      coins: user.coins,
-      attempts: user.attempts,
-      ganados: user.ganados,
-      perdidos: user.perdidos
-    }));
-  }
-}
-
-    // Acción de login de administrador
     if (data.type === 'adminLogin') {
+      // Verificamos la contraseña del administrador
       if (data.password === adminPassword) {
         ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
       } else {
@@ -80,8 +72,8 @@ if (data.type === 'gameAction') {
       }
     }
 
-    // Acción de actualización de usuario por el administrador
     if (data.type === 'adminUpdate') {
+      // Verificamos si el usuario existe
       const user = users[data.username];
       if (user) {
         user.coins += data.coins;
