@@ -37,19 +37,19 @@ wss.on('connection', (ws) => {
       const user = users[data.username];
       if (user && user.attempts > 0) {
         user.attempts--;
-        
+
         // Generar una cantidad aleatoria de monedas entre 0 y 70
         const coinsWon = Math.floor(Math.random() * 71);  // Genera un número entre 0 y 70
 
-        // Decidir si ganar o perder monedas
-        const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
+        // Aumentamos las probabilidades de ganar (60% de ganar, 40% de perder)
+        const resultado = Math.random() > 0.4 ? 'ganado' : 'perdido';  // 60% de ganar, 40% de perder
 
         if (resultado === 'ganado') {
           user.coins += coinsWon;
           user.ganados += coinsWon;
         } else {
-          user.coins -= 5;
-          user.perdidos += 5;
+          user.coins -= 1;  // Perdida mínima de 1 moneda en lugar de 5
+          user.perdidos += 1;
         }
 
         // Enviar el estado actualizado al cliente
