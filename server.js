@@ -37,6 +37,15 @@ fs.readFile('admin_data.json', 'utf8', (err, data) => {
 // Almacenar información de los jugadores
 const users = {}; // Aquí irían los datos de los jugadores
 
+// Función para guardar los usuarios (puedes usar una base de datos en producción)
+const saveUser = (username, coins, attempts) => {
+  users[username] = { coins, attempts, ganados: 0, perdidos: 0 };
+};
+
+// Simulación de algunos usuarios
+saveUser('user1', 500, 3);
+
+// Al abrir una conexión WebSocket
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
   
@@ -70,7 +79,11 @@ wss.on('connection', (ws) => {
           username,
           coins: users[username].coins,
           attempts: users[username].attempts,
+          ganados: users[username].ganados,
+          perdidos: users[username].perdidos
         }));
+      } else {
+        ws.send(JSON.stringify({ type: 'userNotFound' }));
       }
     }
 
@@ -85,15 +98,19 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'loginFailure' }));
       }
     }
+
+    // Registro de nuevos jugadores
+    if (data.type === 'register') {
+      const { username } = data;
+      if (!users[username]) {
+        saveUser(username, 0, 3); // Establecer monedas e intentos iniciales
+        ws.send(JSON.stringify({ type: 'registerSuccess', username }));
+      } else {
+        ws.send(JSON.stringify({ type: 'registerFailure' }));
+      }
+    }
   });
 });
 
-// Función para guardar los usuarios (puedes usar una base de datos en producción)
-const saveUser = (username, coins, attempts) => {
-  users[username] = { coins, attempts, ganados: 0, perdidos: 0 };
-};
-
-// Simulación de algunos usuarios
-saveUser('user1', 500, 3);
-
+// Mostrar el puerto en el que está corriendo el servidor
 console.log('Servidor WebSocket corriendo en ws://localhost:3000');
