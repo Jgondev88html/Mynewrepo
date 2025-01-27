@@ -1,3 +1,4 @@
+const fs = require('fs');
 const WebSocket = require('ws');
 const express = require('express');
 
@@ -5,73 +6,60 @@ const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Lista de jugadores conectados
-let players = [];
-let waitingPlayer = null;
+let players = []; // Lista de jugadores en memoria
+let playerData = {}; // Almacenar datos persistentes
 
-// Manejar conexiones WebSocket
+// Cargar datos desde un archivo al iniciar el servidor
+if (fs.existsSync('playerData.json')) {
+  playerData = JSON.parse(fs.readFileSync('playerData.json'));
+}
+
+// Guardar datos al archivo
+function savePlayerData() {
+  fs.writeFileSync('playerData.json', JSON.stringify(playerData, null, 2));
+}
+
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
 
-  let player = null; // Datos del jugador conectado
+  let player = null;
 
-  // Manejar mensajes del cliente
   ws.on('message', (message) => {
     const data = JSON.parse(message);
 
-    // **LOGIN**
     if (data.action === 'login') {
       const username = data.username.trim();
+
+      // Verificar si el nombre ya está en uso
       if (players.find((p) => p.username === username)) {
         ws.send(JSON.stringify({ action: 'login', success: false, message: 'Nombre ya en uso' }));
         return;
       }
 
-      // Registrar al jugador
+      // Cargar o inicializar datos del jugador
+      if (!playerData[username]) {
+        playerData[username] = { monedas: 50, intentos: 3 };
+        savePlayerData();
+      }
+
       player = {
         username,
         ws,
-        monedas: 50,
-        intentos: 3,
+        monedas: playerData[username].monedas,
+        intentos: playerData[username].intentos,
         opponent: null,
-        isTurn: false,
       };
+
       players.push(player);
       ws.send(JSON.stringify({ action: 'login', success: true, monedas: player.monedas, intentos: player.intentos }));
       console.log(`${username} se ha conectado.`);
 
-      // Enviar lista de usuarios conectados
       broadcastPlayers();
-
-      // Intentar emparejar al jugador
-      if (waitingPlayer && waitingPlayer !== player) {
-        player.opponent = waitingPlayer;
-        waitingPlayer.opponent = player;
-
-        // Asignar turno inicial
-        player.isTurn = true; // El nuevo jugador comienza
-
-        waitingPlayer.ws.send(
-          JSON.stringify({ action: 'matchRequest', opponent: player.username })
-        );
-        player.ws.send(
-          JSON.stringify({ action: 'matchRequest', opponent: waitingPlayer.username })
-        );
-        waitingPlayer = null; // Emparejado, ya no está esperando
-      } else {
-        waitingPlayer = player; // Poner al jugador en espera
-      }
     }
 
-    // **APUESTA**
     if (data.action === 'bet') {
       if (!player || !player.opponent) {
         ws.send(JSON.stringify({ action: 'error', message: 'No tienes un oponente aún.' }));
-        return;
-      }
-
-      if (!player.isTurn) {
-        ws.send(JSON.stringify({ action: 'error', message: 'No es tu turno.' }));
         return;
       }
 
@@ -81,95 +69,56 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      // Resultado aleatorio
       const win = Math.random() < 0.5;
       if (win) {
         player.monedas += betAmount;
         player.opponent.monedas -= betAmount;
-        ws.send(JSON.stringify({ action: 'betResult', win: true, monedas: player.monedas }));
-        player.opponent.ws.send(
-          JSON.stringify({ action: 'betResult', win: false, monedas: player.opponent.monedas })
-        );
       } else {
         player.monedas -= betAmount;
         player.opponent.monedas += betAmount;
-        ws.send(JSON.stringify({ action: 'betResult', win: false, monedas: player.monedas }));
-        player.opponent.ws.send(
-          JSON.stringify({ action: 'betResult', win: true, monedas: player.opponent.monedas })
-        );
       }
 
-      // **Restar intentos**
+      // Actualizar datos del jugador
+      playerData[player.username].monedas = player.monedas;
+      playerData[player.opponent.username].monedas = player.opponent.monedas;
+      savePlayerData();
+
+      ws.send(JSON.stringify({ action: 'betResult', win, monedas: player.monedas }));
+      player.opponent.ws.send(
+        JSON.stringify({ action: 'betResult', win: !win, monedas: player.opponent.monedas })
+      );
+
       player.intentos--;
       player.opponent.intentos--;
+      playerData[player.username].intentos = player.intentos;
+      playerData[player.opponent.username].intentos = player.opponent.intentos;
 
-      // **Comprobar si los intentos se han agotado**
+      savePlayerData();
+
       if (player.intentos <= 0 || player.opponent.intentos <= 0) {
-        player.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.monedas }));
-        player.opponent.ws.send(
-          JSON.stringify({ action: 'gameOver', monedas: player.opponent.monedas })
-        );
+        ws.send(JSON.stringify({ action: 'gameOver', monedas: player.monedas }));
+        player.opponent.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.opponent.monedas }));
         return;
       }
 
-      // Alternar turnos
-      player.isTurn = false;
-      player.opponent.isTurn = true;
-
-      // Notificar turnos
-      ws.send(JSON.stringify({ action: 'turn', isTurn: false }));
-      player.opponent.ws.send(JSON.stringify({ action: 'turn', isTurn: true }));
-
-      // Enviar la actualización de intentos
       ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.intentos }));
-      player.opponent.ws.send(
-        JSON.stringify({ action: 'updateAttempts', intentos: player.opponent.intentos })
-      );
-    }
-
-    // **RESPONDER INVITACION**
-    if (data.action === 'responseToMatch') {
-      const response = data.response;
-      if (response === 'accept' && player.opponent) {
-        player.opponent.ws.send(
-          JSON.stringify({ action: 'matchAccepted', opponent: player.username })
-        );
-        player.ws.send(
-          JSON.stringify({ action: 'matchAccepted', opponent: player.opponent.username })
-        );
-        player.intentos = 3;
-        player.opponent.intentos = 3;
-      } else {
-        player.opponent.ws.send(
-          JSON.stringify({ action: 'matchRejected', opponent: player.username })
-        );
-        player.opponent = null;
-      }
+      player.opponent.ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.opponent.intentos }));
     }
   });
 
-  // Manejar desconexión
   ws.on('close', () => {
-    console.log(player?.username + ' desconectado');
-    players = players.filter((p) => p !== player);
-    if (waitingPlayer === player) waitingPlayer = null; // Si estaba esperando, liberarlo
-    if (player?.opponent) {
-      player.opponent.ws.send(JSON.stringify({ action: 'opponentLeft' }));
-      player.opponent.opponent = null;
+    if (player) {
+      players = players.filter((p) => p !== player);
+      broadcastPlayers();
     }
-    broadcastPlayers(); // Actualizar lista de jugadores conectados
   });
 });
 
-// Enviar lista de jugadores conectados
 function broadcastPlayers() {
   const usernames = players.map((p) => p.username);
-  players.forEach((p) =>
-    p.ws.send(JSON.stringify({ action: 'updatePlayers', players: usernames }))
-  );
+  players.forEach((p) => p.ws.send(JSON.stringify({ action: 'updatePlayers', players: usernames })));
 }
 
-// Iniciar servidor en puerto especificado o 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Servidor WebSocket corriendo en el puerto ${PORT}`);
