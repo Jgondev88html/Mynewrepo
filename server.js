@@ -62,21 +62,21 @@ wss.on('connection', (ws) => {
       }
     }
 
-    // Actualización de datos de usuario por parte del administrador
-    if (data.type === 'adminUpdate') {
-      const { username, coins, attempts } = data;
-
-      // Verificar si el usuario existe
+    // Registro de un nuevo jugador
+    if (data.type === 'register') {
+      const { username } = data;
+      
+      // Si el usuario ya está registrado
       if (users[username]) {
-        if (coins) users[username].coins += coins;
-        if (attempts) users[username].attempts += attempts;
-
-        // Enviar los datos actualizados al cliente
+        ws.send(JSON.stringify({ type: 'registerFailure', message: 'El usuario ya existe.' }));
+      } else {
+        // Crear el nuevo usuario
+        saveUser(username, 100, 3); // Puedes modificar las monedas y los intentos iniciales
         ws.send(JSON.stringify({
-          type: 'updateStatus',
+          type: 'registerSuccess',
           username,
-          coins: users[username].coins,
-          attempts: users[username].attempts,
+          coins: 100,
+          attempts: 3,
         }));
       }
     }
