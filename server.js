@@ -101,6 +101,43 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'loginFailure' }));
       }
     }
+
+    // Lógica del juego (al hacer click en "Jugar")
+    if (data.type === 'playGame') {
+      const { username } = data;
+
+      if (users[username] && users[username].attempts > 0) {
+        // Disminuir los intentos
+        users[username].attempts -= 1;
+
+        // Simular un resultado del juego (puedes modificar esta parte)
+        const gameResult = Math.random() > 0.5 ? 'win' : 'lose'; // 50% de ganar o perder
+
+        if (gameResult === 'win') {
+          users[username].coins += 50; // Ganas 50 monedas
+          users[username].ganados += 1;
+        } else {
+          users[username].perdidos += 1;
+        }
+
+        // Enviar los datos actualizados al cliente
+        ws.send(JSON.stringify({
+          type: 'gameResult',
+          result: gameResult,
+          coins: users[username].coins,
+          attempts: users[username].attempts,
+          ganados: users[username].ganados,
+          perdidos: users[username].perdidos,
+        }));
+      } else {
+        // Si no hay intentos restantes
+        ws.send(JSON.stringify({
+          type: 'gameResult',
+          result: 'noAttempts',
+          message: 'No tienes intentos restantes.',
+        }));
+      }
+    }
   });
 });
 
