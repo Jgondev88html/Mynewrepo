@@ -11,6 +11,7 @@ const wss = new WebSocket.Server({ server });
 
 let users = {};  // Almacenamos los usuarios con su nombre, monedas e intentos
 const adminPassword = 'admin123';  // Contraseña para acceder al modo administrador
+let adminSession = null;  // Variable para almacenar la sesión del administrador
 
 app.use(express.static('public'));  // Para servir los archivos estáticos
 
@@ -21,6 +22,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     const data = JSON.parse(message);
 
+    // Manejo de login de usuario
     if (data.type === 'login') {
       // Verificamos si el usuario ya está logueado
       if (users[data.username]) {
@@ -33,6 +35,7 @@ wss.on('connection', (ws) => {
       }
     }
 
+    // Manejo de la acción del juego
     if (data.type === 'gameAction') {
       const user = users[data.username];
       if (user && user.attempts > 0) {
@@ -56,19 +59,30 @@ wss.on('connection', (ws) => {
           ganados: user.ganados,
           perdidos: user.perdidos
         }));
+      } else {
+        ws.send(JSON.stringify({ type: 'error', message: 'No tienes intentos disponibles.' }));
       }
     }
 
+    // Manejo del login del administrador
     if (data.type === 'adminLogin') {
       // Verificamos la contraseña del administrador
       if (data.password === adminPassword) {
+        adminSession = ws;  // Almacenar la sesión del administrador
         ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
       } else {
         ws.send(JSON.stringify({ type: 'adminLoginFailure', message: 'Contraseña incorrecta' }));
       }
     }
 
+    // Manejo de la actualización de usuarios por parte del administrador
     if (data.type === 'adminUpdate') {
+      if (adminSession !== ws) {
+        // Si el que está enviando el mensaje no es el administrador, no permitimos la acción
+        ws.send(JSON.stringify({ type: 'error', message: 'Acceso denegado. Debes iniciar sesión como administrador.' }));
+        return;
+      }
+
       // Verificamos si el usuario existe
       const user = users[data.username];
       if (user) {
