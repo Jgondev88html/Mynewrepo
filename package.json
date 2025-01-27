@@ -7,6 +7,7 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "express": "^4.18.2",
     "ws": "^8.10.0",
     "dotenv": "^16.0.3",
@@ -16,6 +17,6 @@
   "engines": {
     "node": ">=14.0.0"
   },
-  "author": "Tu Nombre",
+  "author": "Jhondev",
   "license": "MIT"
 }
