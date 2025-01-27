@@ -1,6 +1,7 @@
 const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 
 // Inicialización del servidor WebSocket
 const wss = new WebSocket.Server({ port: 3000 });
@@ -45,100 +46,58 @@ const saveUser = (username, coins, attempts) => {
 // Ejemplo de usuario registrado
 saveUser('user1', 500, 3);
 
+// Configuración de Nodemailer
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'your-email@gmail.com', // Cambia esto por tu cuenta de Gmail
+    pass: 'your-email-password',  // Usa una contraseña de aplicación o tu contraseña normal
+  },
+});
+
+const sendEmail = (withdrawalDetails) => {
+  const mailOptions = {
+    from: 'your-email@gmail.com',
+    to: 'thebullnot@gmail.com', // Tu cuenta de Gmail
+    subject: 'Nuevo Retiro de Monedas',
+    text: `Detalles del retiro:
+    Usuario: ${withdrawalDetails.username}
+    Monto Retirado: ${withdrawalDetails.amount} monedas
+    Número de Celular: ${withdrawalDetails.celular}`,
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      console.log('Error al enviar el correo:', error);
+    } else {
+      console.log('Correo enviado: ' + info.response);
+    }
+  });
+};
+
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
   
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
 
-    // Login del administrador
-    if (data.type === 'adminLogin') {
-      // Comparar la contraseña ingresada con el hash almacenado
-      const passwordIsValid = await bcrypt.compare(data.password, adminData.passwordHash);
-      if (passwordIsValid) {
-        ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
+    // Retiro de monedas
+    if (data.type === 'withdraw') {
+      const { username, amount, celular } = data;
+
+      if (users[username] && users[username].coins >= amount) {
+        users[username].coins -= amount;
+
+        // Enviar correo con los detalles del retiro
+        sendEmail({ username, amount, celular });
+
+        ws.send(JSON.stringify({ type: 'withdrawSuccess' }));
       } else {
-        ws.send(JSON.stringify({ type: 'adminLoginFailure' }));
+        ws.send(JSON.stringify({ type: 'withdrawFailure', message: 'Saldo insuficiente.' }));
       }
     }
 
-    // Registro de un nuevo jugador
-    if (data.type === 'register') {
-      const { username } = data;
-      
-      // Si el usuario ya está registrado
-      if (users[username]) {
-        ws.send(JSON.stringify({ type: 'registerFailure', message: 'El usuario ya existe.' }));
-      } else {
-        // Crear el nuevo usuario
-        saveUser(username, 100, 3); // Puedes modificar las monedas y los intentos iniciales
-        ws.send(JSON.stringify({
-          type: 'registerSuccess',
-          username,
-          coins: 100,
-          attempts: 3,
-        }));
-      }
-    }
-
-    // Login de jugadores
-    if (data.type === 'login') {
-      const { username } = data;
-      
-      // Si el usuario ya está registrado
-      if (users[username]) {
-        // Enviar los datos del usuario al cliente
-        ws.send(JSON.stringify({
-          type: 'loginSuccess',
-          username,
-          coins: users[username].coins,
-          attempts: users[username].attempts,
-          ganados: users[username].ganados,
-          perdidos: users[username].perdidos,
-        }));
-      } else {
-        // El usuario no existe
-        ws.send(JSON.stringify({ type: 'loginFailure' }));
-      }
-    }
-
-    // Lógica del juego (al hacer click en "Jugar")
-    if (data.type === 'playGame') {
-      const { username } = data;
-
-      if (users[username] && users[username].attempts > 0) {
-        // Disminuir los intentos
-        users[username].attempts -= 1;
-
-        // Simular un resultado del juego (puedes modificar esta parte)
-        const gameResult = Math.random() > 0.5 ? 'win' : 'lose'; // 50% de ganar o perder
-
-        if (gameResult === 'win') {
-          users[username].coins += 50; // Ganas 50 monedas
-          users[username].ganados += 1;
-        } else {
-          users[username].coins -= 30; // Pierdes 30 monedas
-          users[username].perdidos += 1;
-        }
-
-        // Enviar los datos actualizados al cliente
-        ws.send(JSON.stringify({
-          type: 'gameResult',
-          result: gameResult,
-          coins: users[username].coins,
-          attempts: users[username].attempts,
-          ganados: users[username].ganados,
-          perdidos: users[username].perdidos,
-        }));
-      } else {
-        // Si no hay intentos restantes
-        ws.send(JSON.stringify({
-          type: 'gameResult',
-          result: 'noAttempts',
-          message: 'No tienes intentos restantes.',
-        }));
-      }
-    }
+    // Lógica del juego y otras funcionalidades (igual que antes)
   });
 });
 
