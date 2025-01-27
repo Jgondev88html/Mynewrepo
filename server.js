@@ -1,100 +1,70 @@
 const WebSocket = require('ws');
-const bcrypt = require('bcryptjs');
-const fs = require('fs');
+const http = require('http');
+const express = require('express');
 
-// Inicialización del servidor WebSocket
-const wss = new WebSocket.Server({ port: 3000 });
+// Crear la app de Express
+const app = express();
+const server = http.createServer(app);
 
-// Datos de administrador (guardados de manera segura con hash)
-let adminData = {
-  username: 'admin',
-  passwordHash: '',  // Esto se establecerá cuando se encripte la contraseña
-};
+// Crear un WebSocket server
+const wss = new WebSocket.Server({ server });
 
-// Cargar los datos del administrador desde un archivo o establecer un valor inicial
-fs.readFile('admin_data.json', 'utf8', (err, data) => {
-  if (err) {
-    console.log('No se pudo leer el archivo de datos de admin. Creando uno nuevo...');
-    bcrypt.hash('admin123', 10, (err, hash) => {
-      if (err) {
-        console.log('Error al generar hash de contraseña', err);
-      } else {
-        adminData.passwordHash = hash;
-        fs.writeFile('admin_data.json', JSON.stringify(adminData), 'utf8', (err) => {
-          if (err) {
-            console.log('Error al guardar los datos de admin');
-          } else {
-            console.log('Datos de admin guardados correctamente');
-          }
-        });
-      }
-    });
-  } else {
-    adminData = JSON.parse(data);
-  }
-});
+let users = {};  // Almacenamos los usuarios con su nombre, monedas e intentos
 
-// Almacenar información de los jugadores
-const users = {}; // Aquí irían los datos de los jugadores
+app.use(express.static('public'));  // Para servir los archivos estáticos
 
+// Cuando un cliente se conecta al WebSocket
 wss.on('connection', (ws) => {
-  console.log('Nuevo cliente conectado');
-  
-  // Manejador para mensajes de los clientes
-  ws.on('message', async (message) => {
+  console.log('Nuevo usuario conectado');
+
+  ws.on('message', (message) => {
     const data = JSON.parse(message);
 
-    // Login del administrador
-    if (data.type === 'adminLogin') {
-      const passwordIsValid = await bcrypt.compare(data.password, adminData.passwordHash);
-      if (passwordIsValid) {
-        ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
-      } else {
-        ws.send(JSON.stringify({ type: 'adminLoginFailure' }));
-      }
-    }
-
-    // Login de jugadores
     if (data.type === 'login') {
-      const { username } = data;
-      
-      // Si el usuario ya está registrado
-      if (users[username]) {
-        ws.send(JSON.stringify({ type: 'loginSuccess', username, ...users[username] }));
+      // Verificamos si el usuario ya está logueado
+      if (users[data.username]) {
+        ws.send(JSON.stringify({ type: 'error', message: 'El usuario ya está registrado. Elija otro nombre.' }));
       } else {
-        // Si no está registrado, lo creamos
-        users[username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 };
-        ws.send(JSON.stringify({ type: 'loginSuccess', username, ...users[username] }));
+        // Si el usuario no está registrado, lo registramos
+        users[data.username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 };
+        console.log(`Usuario ${data.username} conectado`);
+        ws.send(JSON.stringify({ type: 'loginSuccess', username: data.username }));
       }
     }
 
-    // Actualización de datos de usuario por parte del administrador
-    if (data.type === 'adminUpdate') {
-      const { username, coins, attempts } = data;
+    if (data.type === 'gameAction') {
+      const user = users[data.username];
+      if (user && user.attempts > 0) {
+        user.attempts--;
+        // Decidir si ganar o perder monedas
+        const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
 
-      // Verificar si el usuario existe
-      if (users[username]) {
-        if (coins) users[username].coins += coins;
-        if (attempts) users[username].attempts += attempts;
+        if (resultado === 'ganado') {
+          user.coins += 10;
+          user.ganados += 10;
+        } else {
+          user.coins -= 5;
+          user.perdidos += 5;
+        }
 
-        // Enviar los datos actualizados al cliente
+        // Enviar el estado actualizado al cliente
         ws.send(JSON.stringify({
           type: 'updateStatus',
-          username,
-          coins: users[username].coins,
-          attempts: users[username].attempts,
+          coins: user.coins,
+          attempts: user.attempts,
+          ganados: user.ganados,
+          perdidos: user.perdidos
         }));
       }
     }
   });
+
+  ws.on('close', () => {
+    console.log('Un usuario se desconectó');
+  });
 });
 
-// Función para guardar los usuarios (puedes usar una base de datos en producción)
-const saveUser = (username, coins, attempts) => {
-  users[username] = { coins, attempts, ganados: 0, perdidos: 0 };
-};
-
-// Simulación de algunos usuarios
-saveUser('user1', 500, 3);
-
-console.log('Servidor WebSocket corriendo en ws://localhost:3000');
+// Arrancar el servidor en el puerto 3000
+server.listen(3000, () => {
+  console.log('Servidor corriendo en el puerto 3000');
+});
