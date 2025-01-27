@@ -10,6 +10,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 let users = {};  // Almacenamos los usuarios con su nombre, monedas e intentos
+const adminPassword = 'admin123';  // Contraseña para acceder al modo administrador
 
 app.use(express.static('public'));  // Para servir los archivos estáticos
 
@@ -54,6 +55,35 @@ wss.on('connection', (ws) => {
           attempts: user.attempts,
           ganados: user.ganados,
           perdidos: user.perdidos
+        }));
+      }
+    }
+
+    if (data.type === 'adminLogin') {
+      // Verificamos la contraseña del administrador
+      if (data.password === adminPassword) {
+        ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
+      } else {
+        ws.send(JSON.stringify({ type: 'adminLoginFailure', message: 'Contraseña incorrecta' }));
+      }
+    }
+
+    if (data.type === 'adminUpdate') {
+      // Verificamos si el usuario existe
+      const user = users[data.username];
+      if (user) {
+        user.coins += data.coins;
+        user.attempts += data.attempts;
+        ws.send(JSON.stringify({
+          type: 'adminUpdateSuccess',
+          username: data.username,
+          coins: user.coins,
+          attempts: user.attempts
+        }));
+      } else {
+        ws.send(JSON.stringify({
+          type: 'adminUpdateFailure',
+          message: 'Usuario no encontrado'
         }));
       }
     }
