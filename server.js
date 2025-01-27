@@ -117,6 +117,7 @@ wss.on('connection', (ws) => {
           users[username].coins += 50; // Ganas 50 monedas
           users[username].ganados += 1;
         } else {
+          users[username].coins -= 30; // Pierdes 30 monedas
           users[username].perdidos += 1;
         }
 
