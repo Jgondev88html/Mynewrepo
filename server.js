@@ -17,6 +17,9 @@ wss.on('connection', (ws) => {
 
     console.log('Cliente conectado');
 
+    // Enviar lista de usuarios activos al cliente recién conectado
+    ws.send(JSON.stringify({ type: 'activeUsers', users: Object.keys(activeUsers) }));
+
     // Escuchar mensajes del cliente
     ws.on('message', (message) => {
         const data = JSON.parse(message);
