@@ -1,114 +1,85 @@
+const express = require('express');
 const WebSocket = require('ws');
+const app = express();
+const port = 3000;
+
+// Configuración para servir los archivos estáticos (HTML, CSS, JS)
+app.use(express.static('public'));
 
 // Crear el servidor WebSocket
-const wss = new WebSocket.Server({ port: 3000 });
-
-// Almacén para los usuarios (monedas e intentos)
-const users = {};
+const wss = new WebSocket.Server({ noServer: true });
 
 wss.on('connection', (ws) => {
-    console.log('Nuevo cliente conectado');
+    let userCoins = 100; // Monedas iniciales
+    let userAttempts = 5; // Intentos iniciales
 
-    // Escuchar mensajes del cliente
+    console.log('Cliente conectado');
+    
     ws.on('message', (message) => {
         const data = JSON.parse(message);
-
+        
+        // Login del jugador
         if (data.type === 'login') {
-            const username = data.username;
-
-            // Inicializar al usuario si no existe
-            if (!users[username]) {
-                users[username] = {
-                    coins: 100,  // Monedas iniciales
-                    attempts: 5  // Intentos iniciales
-                };
-            }
-
-            console.log(`Usuario conectado: ${username}`);
-            ws.send(
-                JSON.stringify({
-                    type: 'loginSuccess',
-                    coins: users[username].coins,
-                    attempts: users[username].attempts
-                })
-            );
+            console.log(`Usuario ${data.username} ha iniciado sesión`);
+            ws.send(JSON.stringify({
+                type: 'loginSuccess',
+                coins: userCoins,
+                attempts: userAttempts
+            }));
         }
 
+        // Juego - Adivina el número
         if (data.type === 'guess') {
-            const username = data.username;
-            const bet = data.bet;
+            if (userAttempts > 0) {
+                const bet = data.bet; // Apuesta en número
+                const randomNumber = Math.floor(Math.random() * 5) + 1; // Número aleatorio entre 1 y 5
+                userAttempts -= 1; // Restamos un intento
 
-            // Verificar si el usuario existe
-            if (!users[username]) {
-                ws.send(JSON.stringify({ type: 'error', message: 'Usuario no encontrado' }));
-                return;
-            }
-
-            // Verificar intentos disponibles
-            if (users[username].attempts <= 0) {
-                ws.send(
-                    JSON.stringify({
-                        type: 'result',
-                        message: 'No tienes más intentos disponibles.',
-                        newCoins: users[username].coins,
-                        remainingAttempts: users[username].attempts
-                    })
-                );
-                return;
-            }
-
-            // Verificar si la apuesta está en el rango permitido (1-5)
-            if (bet < 1 || bet > 5) {
-                ws.send(
-                    JSON.stringify({
-                        type: 'error',
-                        message: 'La apuesta debe estar entre 1 y 5.'
-                    })
-                );
-                return;
-            }
-
-            // Generar el número aleatorio entre 1 y 5
-            const randomNumber = Math.floor(Math.random() * 5) + 1;
-
-            // Reducir los intentos
-            users[username].attempts -= 1;
-
-            // Lógica de la apuesta
-            if (bet === randomNumber) {
-                // Ganó la apuesta
-                const reward = bet * 10; // Recompensa: apuesta * 10
-                users[username].coins += reward;
-
-                ws.send(
-                    JSON.stringify({
+                if (bet === randomNumber) {
+                    const winAmount = randomNumber * 10; // El jugador gana 10 veces el número adivinado
+                    userCoins += winAmount;
+                    ws.send(JSON.stringify({
                         type: 'result',
                         win: true,
-                        amount: reward,
-                        newCoins: users[username].coins,
-                        remainingAttempts: users[username].attempts,
-                        number: randomNumber
-                    })
-                );
-            } else {
-                // Perdió la apuesta
-                ws.send(
-                    JSON.stringify({
+                        amount: winAmount,
+                        number: randomNumber, // Enviamos el número generado
+                        newCoins: userCoins,
+                        remainingAttempts: userAttempts
+                    }));
+                } else {
+                    ws.send(JSON.stringify({
                         type: 'result',
                         win: false,
-                        newCoins: users[username].coins,
-                        remainingAttempts: users[username].attempts,
-                        number: randomNumber
-                    })
-                );
+                        number: randomNumber, // Enviamos el número generado
+                        newCoins: userCoins,
+                        remainingAttempts: userAttempts
+                    }));
+                }
+            } else {
+                ws.send(JSON.stringify({
+                    type: 'result',
+                    win: false,
+                    message: '¡Has quedado sin intentos! El juego ha terminado.',
+                    newCoins: userCoins,
+                    remainingAttempts: userAttempts
+                }));
             }
         }
     });
 
-    // Manejo de cierre de conexión
     ws.on('close', () => {
         console.log('Cliente desconectado');
     });
 });
 
-console.log('Servidor WebSocket escuchando en ws://localhost:3000');
+// Redirige WebSocket a partir de la petición HTTP
+app.server = app.listen(port, () => {
+    console.log(`Servidor escuchando en http://localhost:${port}`);
+});
+
+// Crear un objeto para almacenar a los usuarios y sus conexiones
+app.server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
+});
