@@ -23,25 +23,21 @@ wss.on('connection', (ws) => {
 
     // Acción de login de usuario
     if (data.type === 'login') {
-      // Verificamos si el usuario ya está logueado
       if (users[data.username]) {
         ws.send(JSON.stringify({ type: 'error', message: 'El usuario ya está registrado. Elija otro nombre.' }));
       } else {
-        // Si el usuario no está registrado, lo registramos
         users[data.username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 };
         console.log(`Usuario ${data.username} conectado`);
         ws.send(JSON.stringify({ type: 'loginSuccess', username: data.username, coins: 0, attempts: 3, ganados: 0, perdidos: 0 }));
       }
     }
 
-    // Acción de juego: restar intentos y agregar monedas
+    // Acción de juego
     if (data.type === 'gameAction') {
       const user = users[data.username];
       if (user && user.attempts > 0) {
         user.attempts--;
-        // Decidir si ganar o perder monedas
         const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
-
         if (resultado === 'ganado') {
           user.coins += 10;
           user.ganados += 10;
@@ -50,7 +46,6 @@ wss.on('connection', (ws) => {
           user.perdidos += 5;
         }
 
-        // Enviar el estado actualizado al cliente
         ws.send(JSON.stringify({
           type: 'updateStatus',
           coins: user.coins,
@@ -70,7 +65,7 @@ wss.on('connection', (ws) => {
       }
     }
 
-    // Acción para actualizar monedas e intentos de un usuario (modo admin)
+    // Acción de actualización de usuario por el administrador
     if (data.type === 'adminUpdate') {
       const user = users[data.username];
       if (user) {
@@ -91,7 +86,6 @@ wss.on('connection', (ws) => {
     }
   });
 
-  // Manejar desconexión del cliente
   ws.on('close', () => {
     console.log('Un usuario se desconectó');
   });
