@@ -40,8 +40,8 @@ if (data.type === 'gameAction') {
     const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
 
     if (resultado === 'ganado') {
-      // Generar una cantidad aleatoria de monedas entre 1 y 40
-      const monedasGanadas = Math.floor(Math.random() * 40) + 1;
+      // Generar una cantidad aleatoria de monedas entre 10 y 40
+      const monedasGanadas = Math.floor(Math.random() * 40) + 10;
       user.coins += monedasGanadas;
       user.ganados += monedasGanadas;
     } else {
