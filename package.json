@@ -1,15 +1,15 @@
 {
-  "name": "juego-adivinanza",
+  "name": "mi-juego",
   "version": "1.0.0",
-  "description": "Juego de adivinanza de números con WebSocket y Node.js",
+  "description": "Juego de ganar y perder monedas usando WebSocket",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.8.0"
-  }
+  },
+  "author": "",
+  "license": "ISC"
 }
