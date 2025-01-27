@@ -23,7 +23,7 @@ wss.on('connection', (ws) => {
     if (data.type === 'login') {
       // Si el usuario no está registrado, lo registramos
       if (!users[data.username]) {
-        users[data.username] = { coins: 0, attempts: 3 }; // Inicializamos monedas e intentos
+        users[data.username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 }; // Inicializamos monedas, intentos, ganancias y pérdidas
       }
       console.log(`Usuario ${data.username} conectado`);
     }
@@ -33,17 +33,23 @@ wss.on('connection', (ws) => {
       if (user && user.attempts > 0) {
         user.attempts--;
         // Decidir si ganar o perder monedas
-        if (Math.random() > 0.5) {
-          user.coins += 10;  // Ganar monedas
+        const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
+
+        if (resultado === 'ganado') {
+          user.coins += 10;
+          user.ganados += 10;
         } else {
-          user.coins -= 5;  // Perder monedas
+          user.coins -= 5;
+          user.perdidos += 5;
         }
 
         // Enviar el estado actualizado al cliente
         ws.send(JSON.stringify({
           type: 'updateStatus',
           coins: user.coins,
-          attempts: user.attempts
+          attempts: user.attempts,
+          ganados: user.ganados,
+          perdidos: user.perdidos
         }));
       }
     }
