@@ -3,86 +3,75 @@ const WebSocket = require('ws');
 const app = express();
 const port = 3000;
 
-// Configuración para servir archivos estáticos
 app.use(express.static('public'));
 
-// Crear el servidor WebSocket
 const wss = new WebSocket.Server({ noServer: true });
-const users = new Map(); // Guardar usuarios y sus datos
 
-wss.on('connection', (ws, req) => {
+let users = {}; // Almacena usuarios activos con sus monedas e intentos.
+
+wss.on('connection', (ws) => {
     let currentUser = null;
-
-    console.log('Cliente conectado');
 
     ws.on('message', (message) => {
         const data = JSON.parse(message);
 
-        // Login
+        // Manejar login
         if (data.type === 'login') {
-            const username = data.username.trim();
-            if (users.has(username)) {
-                ws.send(JSON.stringify({ type: 'loginError', message: 'Nombre de usuario en uso.' }));
-                return;
+            if (users[data.username]) {
+                ws.send(JSON.stringify({ type: 'loginError', message: 'El nombre de usuario ya está en uso.' }));
+            } else {
+                currentUser = data.username;
+                users[currentUser] = { coins: 100, attempts: 5 };
+                ws.send(JSON.stringify({ type: 'loginSuccess', username: currentUser, coins: 100, attempts: 5 }));
+                broadcastActiveUsers();
             }
-            currentUser = { username, coins: 100, attempts: 5 };
-            users.set(username, currentUser);
-            broadcastActiveUsers();
-            ws.send(JSON.stringify({
-                type: 'loginSuccess',
-                username,
-                coins: currentUser.coins,
-                attempts: currentUser.attempts
-            }));
         }
 
-        // Reconexión
+        // Manejar reconexión
         if (data.type === 'reconnect') {
-            const username = data.username.trim();
-            if (users.has(username)) {
-                currentUser = users.get(username);
-                ws.send(JSON.stringify({
-                    type: 'loginSuccess',
-                    username,
-                    coins: currentUser.coins,
-                    attempts: currentUser.attempts
-                }));
+            if (users[data.username]) {
+                currentUser = data.username;
+                const { coins, attempts } = users[currentUser];
+                ws.send(JSON.stringify({ type: 'loginSuccess', username: currentUser, coins, attempts }));
                 broadcastActiveUsers();
             } else {
-                ws.send(JSON.stringify({ type: 'loginError', message: 'Usuario no encontrado, vuelve a iniciar sesión.' }));
+                ws.send(JSON.stringify({ type: 'loginError', message: 'Usuario no encontrado. Por favor, inicia sesión nuevamente.' }));
             }
         }
 
-        // Adivinar número
-        if (data.type === 'guess') {
-            if (!currentUser) return;
-            if (currentUser.attempts <= 0) {
-                ws.send(JSON.stringify({ type: 'result', win: false, message: '¡No te quedan intentos!' }));
-                return;
-            }
+        // Manejar juego
+        if (data.type === 'guess' && currentUser) {
+            const user = users[currentUser];
+            if (user.attempts > 0) {
+                const bet = data.bet;
+                const randomNumber = Math.floor(Math.random() * 5) + 1;
+                user.attempts--;
 
-            const bet = data.bet;
-            const randomNumber = Math.floor(Math.random() * 5) + 1; // Números del 1 al 5
-            currentUser.attempts -= 1;
-
-            if (bet === randomNumber) {
-                const winAmount = randomNumber * 2;
-                currentUser.coins += winAmount;
-                ws.send(JSON.stringify({
-                    type: 'result',
-                    win: true,
-                    amount: winAmount,
-                    number: randomNumber,
-                    newCoins: currentUser.coins,
-                    remainingAttempts: currentUser.attempts
-                }));
+                if (bet === randomNumber) {
+                    user.coins += randomNumber * 2;
+                    ws.send(JSON.stringify({
+                        type: 'result',
+                        win: true,
+                        number: randomNumber,
+                        newCoins: user.coins,
+                        remainingAttempts: user.attempts,
+                    }));
+                } else {
+                    ws.send(JSON.stringify({
+                        type: 'result',
+                        win: false,
+                        number: randomNumber,
+                        newCoins: user.coins,
+                        remainingAttempts: user.attempts,
+                    }));
+                }
             } else {
                 ws.send(JSON.stringify({
                     type: 'result',
                     win: false,
-                    number: randomNumber,
-                    newCoins: currentUser.coins,
-                    remainingAttempts: currentUser.attempts
+                    message: 'Sin intentos restantes.',
+                    newCoins: users[currentUser].coins,
+                    remainingAttempts: 0,
                 }));
             }
         }
@@ -90,30 +79,22 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
         if (currentUser) {
-            users.delete(currentUser.username);
+            delete users[currentUser];
             broadcastActiveUsers();
         }
-        console.log('Cliente desconectado');
     });
 });
 
-// Función para enviar la lista de usuarios activos
+// Broadcast para actualizar usuarios activos
 function broadcastActiveUsers() {
-    const activeUsers = Array.from(users.keys());
-    wss.clients.forEach(client => {
+    const activeUsers = Object.keys(users);
+    wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify({ type: 'activeUsers', users: activeUsers }));
         }
     });
 }
 
-// Configuración para manejar la actualización de WebSocket
-app.server = app.listen(port, () => {
+app.listen(port, () => {
     console.log(`Servidor escuchando en http://localhost:${port}`);
-});
-
-app.server.on('upgrade', (request, socket, head) => {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-    });
 });
