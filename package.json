@@ -1,18 +1,15 @@
 {
-  "name": "game-server",
+  "name": "juego-adivinanza",
   "version": "1.0.0",
-  "description": "Juego de apuestas multijugador con WebSocket",
+  "description": "Juego de adivinanza de números con WebSocket y Node.js",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
-    "ws": "^8.7.0"
-  },
-  "engines": {
-    "node": "16.x"
-  },
-  "author": "",
-  "license": "ISC"
+    "ws": "^8.8.0"
+  }
 }
