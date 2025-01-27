@@ -1,125 +1,61 @@
-const fs = require('fs');
-const WebSocket = require('ws');
 const express = require('express');
-
+const WebSocket = require('ws');
 const app = express();
-const server = require('http').createServer(app);
-const wss = new WebSocket.Server({ server });
+const port = 3000;
 
-let players = []; // Lista de jugadores en memoria
-let playerData = {}; // Almacenar datos persistentes
+// Configuración para servir los archivos estáticos (HTML, CSS, JS)
+app.use(express.static('public'));
 
-// Cargar datos desde un archivo al iniciar el servidor
-if (fs.existsSync('playerData.json')) {
-  playerData = JSON.parse(fs.readFileSync('playerData.json'));
-}
-
-// Guardar datos al archivo
-function savePlayerData() {
-  fs.writeFileSync('playerData.json', JSON.stringify(playerData, null, 2));
-}
+// Crear el servidor WebSocket
+const wss = new WebSocket.Server({ noServer: true });
 
 wss.on('connection', (ws) => {
-  console.log('Nuevo cliente conectado');
+    let userCoins = 100; // Monedas iniciales
+    let userAttempts = 5; // Intentos iniciales
 
-  let player = null;
+    console.log('Cliente conectado');
+    
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
+        
+        // Login del jugador
+        if (data.type === 'login') {
+            console.log(`Usuario ${data.username} ha iniciado sesión`);
+        }
 
-  ws.on('message', (message) => {
-    const data = JSON.parse(message);
+        // Juego - Adivina el número
+        if (data.type === 'guess') {
+            if (userAttempts > 0) {
+                const bet = data.bet; // Apuesta en número
+                const randomNumber = Math.floor(Math.random() * 10) + 1; // Número aleatorio entre 1 y 10
+                userAttempts -= 1; // Restamos un intento
 
-    if (data.action === 'login') {
-      const username = data.username.trim();
+                if (bet === randomNumber) {
+                    const winAmount = randomNumber * 2; // El jugador gana el doble del número que adivina
+                    userCoins += winAmount;
+                    ws.send(JSON.stringify({ type: 'result', win: true, amount: winAmount, newCoins: userCoins, remainingAttempts: userAttempts }));
+                } else {
+                    ws.send(JSON.stringify({ type: 'result', win: false, number: randomNumber, newCoins: userCoins, remainingAttempts: userAttempts }));
+                }
+            } else {
+                ws.send(JSON.stringify({ type: 'result', win: false, message: '¡Has quedado sin intentos! El juego ha terminado.', newCoins: userCoins, remainingAttempts: userAttempts }));
+            }
+        }
+    });
 
-      // Verificar si el nombre ya está en uso
-      if (players.find((p) => p.username === username)) {
-        ws.send(JSON.stringify({ action: 'login', success: false, message: 'Nombre ya en uso' }));
-        return;
-      }
-
-      // Cargar o inicializar datos del jugador
-      if (!playerData[username]) {
-        playerData[username] = { monedas: 50, intentos: 3 };
-        savePlayerData();
-      }
-
-      player = {
-        username,
-        ws,
-        monedas: playerData[username].monedas,
-        intentos: playerData[username].intentos,
-        opponent: null,
-      };
-
-      players.push(player);
-      ws.send(JSON.stringify({ action: 'login', success: true, monedas: player.monedas, intentos: player.intentos }));
-      console.log(`${username} se ha conectado.`);
-
-      broadcastPlayers();
-    }
-
-    if (data.action === 'bet') {
-      if (!player || !player.opponent) {
-        ws.send(JSON.stringify({ action: 'error', message: 'No tienes un oponente aún.' }));
-        return;
-      }
-
-      const betAmount = data.betAmount;
-      if (betAmount <= 0 || betAmount > player.monedas) {
-        ws.send(JSON.stringify({ action: 'error', message: 'Apuesta inválida.' }));
-        return;
-      }
-
-      const win = Math.random() < 0.5;
-      if (win) {
-        player.monedas += betAmount;
-        player.opponent.monedas -= betAmount;
-      } else {
-        player.monedas -= betAmount;
-        player.opponent.monedas += betAmount;
-      }
-
-      // Actualizar datos del jugador
-      playerData[player.username].monedas = player.monedas;
-      playerData[player.opponent.username].monedas = player.opponent.monedas;
-      savePlayerData();
-
-      ws.send(JSON.stringify({ action: 'betResult', win, monedas: player.monedas }));
-      player.opponent.ws.send(
-        JSON.stringify({ action: 'betResult', win: !win, monedas: player.opponent.monedas })
-      );
-
-      player.intentos--;
-      player.opponent.intentos--;
-      playerData[player.username].intentos = player.intentos;
-      playerData[player.opponent.username].intentos = player.opponent.intentos;
-
-      savePlayerData();
-
-      if (player.intentos <= 0 || player.opponent.intentos <= 0) {
-        ws.send(JSON.stringify({ action: 'gameOver', monedas: player.monedas }));
-        player.opponent.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.opponent.monedas }));
-        return;
-      }
-
-      ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.intentos }));
-      player.opponent.ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.opponent.intentos }));
-    }
-  });
-
-  ws.on('close', () => {
-    if (player) {
-      players = players.filter((p) => p !== player);
-      broadcastPlayers();
-    }
-  });
+    ws.on('close', () => {
+        console.log('Cliente desconectado');
+    });
 });
 
-function broadcastPlayers() {
-  const usernames = players.map((p) => p.username);
-  players.forEach((p) => p.ws.send(JSON.stringify({ action: 'updatePlayers', players: usernames })));
-}
+// Redirige WebSocket a partir de la petición HTTP
+app.server = app.listen(port, () => {
+    console.log(`Servidor escuchando en http://localhost:${port}`);
+});
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Servidor WebSocket corriendo en el puerto ${PORT}`);
+// Crear un objeto para almacenar a los usuarios y sus conexiones
+app.server.on('upgrade', (request, socket, head) => {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+    });
 });
