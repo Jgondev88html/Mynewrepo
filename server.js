@@ -32,29 +32,33 @@ wss.on('connection', (ws) => {
       }
     }
 
-    // Acción de juego
-    if (data.type === 'gameAction') {
-      const user = users[data.username];
-      if (user && user.attempts > 0) {
-        user.attempts--;
-        const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
-        if (resultado === 'ganado') {
-          user.coins += 10;
-          user.ganados += 10;
-        } else {
-          user.coins -= 5;
-          user.perdidos += 5;
-        }
+  // Acción de juego
+if (data.type === 'gameAction') {
+  const user = users[data.username];
+  if (user && user.attempts > 0) {
+    user.attempts--;
+    const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
 
-        ws.send(JSON.stringify({
-          type: 'updateStatus',
-          coins: user.coins,
-          attempts: user.attempts,
-          ganados: user.ganados,
-          perdidos: user.perdidos
-        }));
-      }
+    if (resultado === 'ganado') {
+      // Generar una cantidad aleatoria de monedas entre 1 y 40
+      const monedasGanadas = Math.floor(Math.random() * 40) + 1;
+      user.coins += monedasGanadas;
+      user.ganados += monedasGanadas;
+    } else {
+      user.coins -= 5;
+      user.perdidos += 5;
     }
+
+    // Enviar el estado actualizado al cliente
+    ws.send(JSON.stringify({
+      type: 'updateStatus',
+      coins: user.coins,
+      attempts: user.attempts,
+      ganados: user.ganados,
+      perdidos: user.perdidos
+    }));
+  }
+}
 
     // Acción de login de administrador
     if (data.type === 'adminLogin') {
