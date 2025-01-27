@@ -42,14 +42,12 @@ const saveUser = (username, coins, attempts) => {
   users[username] = { coins, attempts, ganados: 0, perdidos: 0 };
 };
 
-// Simulación de algunos usuarios
+// Ejemplo de usuario registrado
 saveUser('user1', 500, 3);
 
-// Al abrir una conexión WebSocket
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
   
-  // Manejador para mensajes de los clientes
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
 
@@ -79,11 +77,7 @@ wss.on('connection', (ws) => {
           username,
           coins: users[username].coins,
           attempts: users[username].attempts,
-          ganados: users[username].ganados,
-          perdidos: users[username].perdidos
         }));
-      } else {
-        ws.send(JSON.stringify({ type: 'userNotFound' }));
       }
     }
 
@@ -93,24 +87,21 @@ wss.on('connection', (ws) => {
       
       // Si el usuario ya está registrado
       if (users[username]) {
-        ws.send(JSON.stringify({ type: 'loginSuccess', username, ...users[username] }));
+        // Enviar los datos del usuario al cliente
+        ws.send(JSON.stringify({
+          type: 'loginSuccess',
+          username,
+          coins: users[username].coins,
+          attempts: users[username].attempts,
+          ganados: users[username].ganados,
+          perdidos: users[username].perdidos,
+        }));
       } else {
+        // El usuario no existe
         ws.send(JSON.stringify({ type: 'loginFailure' }));
-      }
-    }
-
-    // Registro de nuevos jugadores
-    if (data.type === 'register') {
-      const { username } = data;
-      if (!users[username]) {
-        saveUser(username, 0, 3); // Establecer monedas e intentos iniciales
-        ws.send(JSON.stringify({ type: 'registerSuccess', username }));
-      } else {
-        ws.send(JSON.stringify({ type: 'registerFailure' }));
       }
     }
   });
 });
 
-// Mostrar el puerto en el que está corriendo el servidor
 console.log('Servidor WebSocket corriendo en ws://localhost:3000');
