@@ -78,8 +78,8 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        if (currentUser) {
-            delete users[currentUser];
+        if (currentUser && users[currentUser]) {
+            // Mantenemos al usuario registrado aunque pierda la conexión temporalmente
             broadcastActiveUsers();
         }
     });
