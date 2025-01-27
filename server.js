@@ -32,22 +32,33 @@ wss.on('connection', (ws) => {
       }
     }
 
-  // Acción de juego
+  // Esta es la función que maneja la acción de jugar (probablemente algo como esto)
 if (data.type === 'gameAction') {
-  const user = users[data.username];
-  if (user && user.attempts > 0) {
-    user.attempts--;
-    const resultado = Math.random() > 0.5 ? 'ganado' : 'perdido';
+  const username = data.username;
+  
+  // Generar una cantidad aleatoria de monedas entre 0 y 70
+  const coinsWon = Math.floor(Math.random() * 71);  // Esto genera un número entre 0 y 70 (inclusive)
+  
+  // Obtener el estado del jugador
+  const user = users[username];
+  if (user) {
+    // Añadir las monedas ganadas al total
+    user.coins += coinsWon;
 
-    if (resultado === 'ganado') {
-      // Generar una cantidad aleatoria de monedas entre 10 y 40
-      const monedasGanadas = Math.floor(Math.random() * 40) + 10;
-      user.coins += monedasGanadas;
-      user.ganados += monedasGanadas;
-    } else {
-      user.coins -= 5;
-      user.perdidos += 5;
-    }
+    // Actualizar el número de intentos (puedes hacer lo que quieras aquí con los intentos)
+    user.attempts -= 1;
+
+    // Enviar los datos actualizados al cliente
+    ws.send(JSON.stringify({
+      type: 'updateStatus',
+      coins: user.coins,
+      attempts: user.attempts,
+      ganados: user.ganados,
+      perdidos: user.perdidos
+    }));
+  }
+}
+
 
     // Enviar el estado actualizado al cliente
     ws.send(JSON.stringify({
