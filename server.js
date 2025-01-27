@@ -21,11 +21,15 @@ wss.on('connection', (ws) => {
     const data = JSON.parse(message);
 
     if (data.type === 'login') {
-      // Si el usuario no está registrado, lo registramos
-      if (!users[data.username]) {
-        users[data.username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 }; // Inicializamos monedas, intentos, ganancias y pérdidas
+      // Verificamos si el usuario ya está logueado
+      if (users[data.username]) {
+        ws.send(JSON.stringify({ type: 'error', message: 'El usuario ya está registrado. Elija otro nombre.' }));
+      } else {
+        // Si el usuario no está registrado, lo registramos
+        users[data.username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 };
+        console.log(`Usuario ${data.username} conectado`);
+        ws.send(JSON.stringify({ type: 'loginSuccess', username: data.username }));
       }
-      console.log(`Usuario ${data.username} conectado`);
     }
 
     if (data.type === 'gameAction') {
