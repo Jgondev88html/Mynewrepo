@@ -34,6 +34,7 @@ wss.on('connection', (ws) => {
         monedas: 50,
         intentos: 3,
         opponent: null,
+        isTurn: false,
       };
       players.push(player);
       ws.send(JSON.stringify({ action: 'login', success: true, monedas: player.monedas, intentos: player.intentos }));
@@ -46,8 +47,16 @@ wss.on('connection', (ws) => {
       if (waitingPlayer && waitingPlayer !== player) {
         player.opponent = waitingPlayer;
         waitingPlayer.opponent = player;
-        waitingPlayer.ws.send(JSON.stringify({ action: 'matchRequest', opponent: player.username }));
-        player.ws.send(JSON.stringify({ action: 'matchRequest', opponent: waitingPlayer.username }));
+
+        // Asignar turno inicial
+        player.isTurn = true; // El nuevo jugador comienza
+
+        waitingPlayer.ws.send(
+          JSON.stringify({ action: 'matchRequest', opponent: player.username })
+        );
+        player.ws.send(
+          JSON.stringify({ action: 'matchRequest', opponent: waitingPlayer.username })
+        );
         waitingPlayer = null; // Emparejado, ya no está esperando
       } else {
         waitingPlayer = player; // Poner al jugador en espera
@@ -58,6 +67,11 @@ wss.on('connection', (ws) => {
     if (data.action === 'bet') {
       if (!player || !player.opponent) {
         ws.send(JSON.stringify({ action: 'error', message: 'No tienes un oponente aún.' }));
+        return;
+      }
+
+      if (!player.isTurn) {
+        ws.send(JSON.stringify({ action: 'error', message: 'No es tu turno.' }));
         return;
       }
 
@@ -91,30 +105,44 @@ wss.on('connection', (ws) => {
 
       // **Comprobar si los intentos se han agotado**
       if (player.intentos <= 0 || player.opponent.intentos <= 0) {
-        // Si se agotan los intentos, el juego termina
         player.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.monedas }));
-        player.opponent.ws.send(JSON.stringify({ action: 'gameOver', monedas: player.opponent.monedas }));
-        player.intentos = 0; // Para evitar que continúen jugando
-        player.opponent.intentos = 0;
-      } else {
-        // Si aún tienen intentos, enviar la actualización
-        ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.intentos }));
-        player.opponent.ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.opponent.intentos }));
+        player.opponent.ws.send(
+          JSON.stringify({ action: 'gameOver', monedas: player.opponent.monedas })
+        );
+        return;
       }
+
+      // Alternar turnos
+      player.isTurn = false;
+      player.opponent.isTurn = true;
+
+      // Notificar turnos
+      ws.send(JSON.stringify({ action: 'turn', isTurn: false }));
+      player.opponent.ws.send(JSON.stringify({ action: 'turn', isTurn: true }));
+
+      // Enviar la actualización de intentos
+      ws.send(JSON.stringify({ action: 'updateAttempts', intentos: player.intentos }));
+      player.opponent.ws.send(
+        JSON.stringify({ action: 'updateAttempts', intentos: player.opponent.intentos })
+      );
     }
 
     // **RESPONDER INVITACION**
     if (data.action === 'responseToMatch') {
       const response = data.response;
       if (response === 'accept' && player.opponent) {
-        player.opponent.ws.send(JSON.stringify({ action: 'matchAccepted', opponent: player.username }));
-        player.ws.send(JSON.stringify({ action: 'matchAccepted', opponent: player.opponent.username }));
+        player.opponent.ws.send(
+          JSON.stringify({ action: 'matchAccepted', opponent: player.username })
+        );
+        player.ws.send(
+          JSON.stringify({ action: 'matchAccepted', opponent: player.opponent.username })
+        );
         player.intentos = 3;
         player.opponent.intentos = 3;
-        status.textContent = 'Juego Iniciado';
       } else {
-        player.opponent.ws.send(JSON.stringify({ action: 'matchRejected', opponent: player.username }));
-        player.ws.send(JSON.stringify({ action: 'matchRejected', opponent: player.opponent.username }));
+        player.opponent.ws.send(
+          JSON.stringify({ action: 'matchRejected', opponent: player.username })
+        );
         player.opponent = null;
       }
     }
@@ -136,7 +164,9 @@ wss.on('connection', (ws) => {
 // Enviar lista de jugadores conectados
 function broadcastPlayers() {
   const usernames = players.map((p) => p.username);
-  players.forEach((p) => p.ws.send(JSON.stringify({ action: 'updatePlayers', players: usernames })));
+  players.forEach((p) =>
+    p.ws.send(JSON.stringify({ action: 'updatePlayers', players: usernames }))
+  );
 }
 
 // Iniciar servidor en puerto especificado o 3000
