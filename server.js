@@ -1,7 +1,6 @@
 const WebSocket = require('ws');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
-const nodemailer = require('nodemailer');
 
 // Inicialización del servidor WebSocket
 const wss = new WebSocket.Server({ port: 3000 });
@@ -38,67 +37,64 @@ fs.readFile('admin_data.json', 'utf8', (err, data) => {
 // Almacenar información de los jugadores
 const users = {}; // Aquí irían los datos de los jugadores
 
+wss.on('connection', (ws) => {
+  console.log('Nuevo cliente conectado');
+  
+  // Manejador para mensajes de los clientes
+  ws.on('message', async (message) => {
+    const data = JSON.parse(message);
+
+    // Login del administrador
+    if (data.type === 'adminLogin') {
+      const passwordIsValid = await bcrypt.compare(data.password, adminData.passwordHash);
+      if (passwordIsValid) {
+        ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
+      } else {
+        ws.send(JSON.stringify({ type: 'adminLoginFailure' }));
+      }
+    }
+
+    // Login de jugadores
+    if (data.type === 'login') {
+      const { username } = data;
+      
+      // Si el usuario ya está registrado
+      if (users[username]) {
+        ws.send(JSON.stringify({ type: 'loginSuccess', username, ...users[username] }));
+      } else {
+        // Si no está registrado, lo creamos
+        users[username] = { coins: 0, attempts: 3, ganados: 0, perdidos: 0 };
+        ws.send(JSON.stringify({ type: 'loginSuccess', username, ...users[username] }));
+      }
+    }
+
+    // Actualización de datos de usuario por parte del administrador
+    if (data.type === 'adminUpdate') {
+      const { username, coins, attempts } = data;
+
+      // Verificar si el usuario existe
+      if (users[username]) {
+        if (coins) users[username].coins += coins;
+        if (attempts) users[username].attempts += attempts;
+
+        // Enviar los datos actualizados al cliente
+        ws.send(JSON.stringify({
+          type: 'updateStatus',
+          username,
+          coins: users[username].coins,
+          attempts: users[username].attempts,
+        }));
+      }
+    }
+  });
+});
+
 // Función para guardar los usuarios (puedes usar una base de datos en producción)
 const saveUser = (username, coins, attempts) => {
   users[username] = { coins, attempts, ganados: 0, perdidos: 0 };
 };
 
-// Ejemplo de usuario registrado
+// Simulación de algunos usuarios
 saveUser('user1', 500, 3);
-
-// Configuración de Nodemailer
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'your-email@gmail.com', // Cambia esto por tu cuenta de Gmail
-    pass: 'your-email-password',  // Usa una contraseña de aplicación o tu contraseña normal
-  },
-});
-
-const sendEmail = (withdrawalDetails) => {
-  const mailOptions = {
-    from: 'your-email@gmail.com',
-    to: 'thebullnot@gmail.com', // Tu cuenta de Gmail
-    subject: 'Nuevo Retiro de Monedas',
-    text: `Detalles del retiro:
-    Usuario: ${withdrawalDetails.username}
-    Monto Retirado: ${withdrawalDetails.amount} monedas
-    Número de Celular: ${withdrawalDetails.celular}`,
-  };
-
-  transporter.sendMail(mailOptions, (error, info) => {
-    if (error) {
-      console.log('Error al enviar el correo:', error);
-    } else {
-      console.log('Correo enviado: ' + info.response);
-    }
-  });
-};
-
-wss.on('connection', (ws) => {
-  console.log('Nuevo cliente conectado');
-  
-  ws.on('message', async (message) => {
-    const data = JSON.parse(message);
-
-    // Retiro de monedas
-    if (data.type === 'withdraw') {
-      const { username, amount, celular } = data;
-
-      if (users[username] && users[username].coins >= amount) {
-        users[username].coins -= amount;
-
-        // Enviar correo con los detalles del retiro
-        sendEmail({ username, amount, celular });
-
-        ws.send(JSON.stringify({ type: 'withdrawSuccess' }));
-      } else {
-        ws.send(JSON.stringify({ type: 'withdrawFailure', message: 'Saldo insuficiente.' }));
-      }
-    }
-
-    // Lógica del juego y otras funcionalidades (igual que antes)
-  });
-});
 
 console.log('Servidor WebSocket corriendo en ws://localhost:3000');
