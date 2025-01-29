@@ -1,16 +1,17 @@
 {
-  "name": "websocket-server",
+  "name": "juego-monedas-ws",
   "version": "1.0.0",
-  "description": "Servidor WebSocket con Express para juego",
+  "description": "Juego de ganar y perder monedas con WebSockets y retiro con FormSubmit.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "ws": "^8.7.0"
+    "ws": "^8.15.0"
   },
-  "author": "",
-  "license": "ISC"
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "author": "Tu Nombre",
+  "license": "MIT"
 }
-
