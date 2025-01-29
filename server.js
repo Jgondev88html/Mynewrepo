@@ -2,19 +2,27 @@ const express = require("express");
 const session = require("express-session");
 const WebSocket = require("ws");
 const cors = require("cors");
+const RedisStore = require('connect-redis')(session);
+const redis = require('redis');
 
 const app = express();
 const server = require("http").createServer(app);
 const wss = new WebSocket.Server({ server });
 
+const redisClient = redis.createClient({
+  host: 'localhost',  // O la URL de tu servidor Redis (en Render usa el host proporcionado por Render)
+  port: 6379          // Puerto predeterminado de Redis
+});
+
 app.use(express.json());
 app.use(cors());
 app.use(
   session({
-    secret: "clave_secreta", 
+    store: new RedisStore({ client: redisClient }),
+    secret: "clave_secreta",
     resave: false,
-    saveUninitialized: true,
-    cookie: { maxAge: 30 * 60 * 1000 }, // 30 minutos
+    saveUninitialized: false,
+    cookie: { secure: false, maxAge: 30 * 60 * 1000 }, // 30 minutos
   })
 );
 
@@ -62,42 +70,25 @@ wss.on("connection", (ws) => {
   ws.on("message", (message) => {
     const data = JSON.parse(message);
 
-    // Registrar un nuevo usuario
     if (data.type === "register") {
       if (users[data.username]) {
         ws.send(JSON.stringify({ type: "error", message: "Nombre de usuario ya en uso" }));
       } else {
         users[data.username] = { coins: 0, attempts: 3 };
-        ws.send(JSON.stringify({ type: "success", message: "Registro exitoso", coins: 0, attempts: 3 }));
+        ws.send(JSON.stringify({ type: "success", message: "Registro exitoso" }));
       }
     }
 
-    // Jugar el juego (reducir intentos, ganar/perder monedas)
     if (data.type === "play") {
       const user = users[data.username];
       if (user && user.attempts > 0) {
-        // Lógica del juego: ganar o perder monedas
-        const won = Math.random() < 0.5; // 50% de probabilidad de ganar
-        const amount = won ? Math.floor(Math.random() * 100) + 1 : -Math.floor(Math.random() * 50) - 1;
-        
-        user.coins += amount;
-        user.attempts--;
+        const result = Math.random() > 0.5 ? 10 : -5; // Ganar o perder monedas
+        user.coins += result;
+        user.attempts -= 1;
 
-        // Enviar resultado al cliente
-        ws.send(JSON.stringify({
-          type: "update",
-          coins: user.coins,
-          attempts: user.attempts,
-          result: amount
-        }));
-
-        // Verificar si el usuario tiene 250 o más monedas
-        if (user.coins >= 250) {
-          // Aquí podrías agregar la lógica para permitir el retiro
-          // Deberías agregar un tipo de mensaje para manejar el retiro
-        }
+        ws.send(JSON.stringify({ type: "update", coins: user.coins, result }));
       } else {
-        ws.send(JSON.stringify({ type: "error", message: "No tienes intentos disponibles" }));
+        ws.send(JSON.stringify({ type: "error", message: "No tienes más intentos disponibles" }));
       }
     }
   });
