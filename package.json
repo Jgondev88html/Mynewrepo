@@ -1,21 +1,20 @@
 {
   "name": "fortuna-express",
   "version": "1.0.0",
-  "description": "Juego Fortuna Express con WebSockets, administración de usuarios y retiros.",
+  "description": "Juego de Fortuna Express",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.1",
+    "express": "^4.18.2",
     "express-session": "^1.17.2",
-    "ws": "^8.5.0",
-    "cors": "^2.8.5"
+    "ws": "^8.8.1",
+    "cors": "^2.8.5",
+    "connect-redis": "^5.0.0",
+    "redis": "^4.1.5"
   },
-  "devDependencies": {},
   "engines": {
     "node": ">=16.0.0"
-  },
-  "author": "Jhon",
-  "license": "ISC"
+  }
 }
