@@ -10,27 +10,17 @@ const server = http.createServer((req, res) => {
 });
 
 const wss = new WebSocket.Server({ server });
-const users = {}; // Guardará usuarios en memoria
+const users = {}; // Almacena usuarios en memoria
 
 wss.on("connection", (ws) => {
     ws.on("message", (message) => {
         const data = JSON.parse(message);
 
         if (data.type === "register") {
-            if (users[data.username]) {
-                ws.send(JSON.stringify({ type: "error", message: "Usuario ya existe" }));
-            } else {
-                users[data.username] = { password: data.password, coins: 100 };
-                ws.send(JSON.stringify({ type: "success", message: "Registro exitoso", coins: 100 }));
+            if (!users[data.username]) {
+                users[data.username] = { coins: 100 };
             }
-        }
-
-        if (data.type === "login") {
-            if (!users[data.username] || users[data.username].password !== data.password) {
-                ws.send(JSON.stringify({ type: "error", message: "Credenciales incorrectas" }));
-            } else {
-                ws.send(JSON.stringify({ type: "success", message: "Login exitoso", coins: users[data.username].coins }));
-            }
+            ws.send(JSON.stringify({ type: "success", coins: users[data.username].coins }));
         }
 
         if (data.type === "play") {
@@ -40,7 +30,7 @@ wss.on("connection", (ws) => {
 
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ type: "update", username: data.username, coins: users[data.username].coins }));
+                        client.send(JSON.stringify({ type: "update", username: data.username, coins: users[data.username].coins, result }));
                     }
                 });
             }
