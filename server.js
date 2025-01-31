@@ -2,7 +2,7 @@ const express = require("express");
 const session = require("express-session");
 const WebSocket = require("ws");
 const cors = require("cors");
-const RedisStore = require('connect-redis')(session);
+const RedisStore = require('connect-redis').default; // Cambio aquí
 const redis = require('redis');
 
 const app = express();
@@ -22,11 +22,17 @@ redisClient.on('error', (err) => {
     console.error('Error de conexión a Redis:', err);
 });
 
+// Crear instancia de RedisStore
+const redisStore = new RedisStore({
+    client: redisClient,
+    prefix: "fortuna-express:"
+});
+
 app.use(express.json());
 app.use(cors());
 app.use(
     session({
-        store: new RedisStore({ client: redisClient }),
+        store: redisStore, // Cambio aquí
         secret: process.env.SESSION_SECRET || "clave_secreta",
         resave: false,
         saveUninitialized: false,
