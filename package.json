@@ -1,7 +1,7 @@
 {
   "name": "fortuna-express",
   "version": "1.0.0",
-  "description": "Un juego de azar con WebSocket y Express",
+  "description": "Servidor para el juego Fortuna Express con WebSocket y Express",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
