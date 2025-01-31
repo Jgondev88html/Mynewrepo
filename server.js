@@ -28,6 +28,9 @@ wss.on('connection', (ws) => {
                 if (!user.loginAttempts) user.loginAttempts = 0;
                 user.loginAttempts++;
                 ws.send(JSON.stringify({ type: 'error', message: 'Nombre de usuario ya existe' }));
+                if (user.loginAttempts >= 3) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Cuenta bloqueada. Contacta al administrador.' }));
+                }
             } else {
                 users.set(username, { balance: 50, ws, loginAttempts: 0 });
                 ws.username = username;
@@ -38,6 +41,10 @@ wss.on('connection', (ws) => {
             const username = data.username;
             if (users.has(username)) {
                 const user = users.get(username);
+                if (user.loginAttempts >= 3) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Cuenta bloqueada. Contacta al administrador.' }));
+                    return;
+                }
                 ws.username = username;
                 ws.send(JSON.stringify({ type: 'loginSuccess', balance: user.balance, username }));
                 console.log(`Usuario ${username} ha restaurado su sesión`);
