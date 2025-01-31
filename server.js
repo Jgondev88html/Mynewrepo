@@ -9,9 +9,9 @@ const app = express();
 const server = require("http").createServer(app);
 const wss = new WebSocket.Server({ server });
 
+// Configura Redis (usando variables de entorno en Render)
 const redisClient = redis.createClient({
-    host: 'localhost',  // Cambia si usas un servidor Redis remoto
-    port: 6379
+    url: process.env.REDIS_URL || "redis://localhost:6379"
 });
 
 redisClient.on('connect', () => {
@@ -27,7 +27,7 @@ app.use(cors());
 app.use(
     session({
         store: new RedisStore({ client: redisClient }),
-        secret: "clave_secreta",
+        secret: process.env.SESSION_SECRET || "clave_secreta",
         resave: false,
         saveUninitialized: false,
         cookie: { secure: false, maxAge: 30 * 60 * 1000 }, // 30 minutos
@@ -39,7 +39,7 @@ let users = {}; // Almacenamiento en memoria de usuarios y sus intentos
 // Verificar login del administrador
 app.post("/admin/login", (req, res) => {
     const { password } = req.body;
-    if (password === "admin123") {
+    if (password === process.env.ADMIN_PASSWORD || "admin123") {
         req.session.admin = true;
         res.json({ success: true });
     } else {
@@ -122,4 +122,5 @@ wss.on("connection", (ws) => {
     });
 });
 
-server.listen(3000, () => console.log("Servidor corriendo en el puerto 3000"));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Servidor corriendo en el puerto ${PORT}`));
