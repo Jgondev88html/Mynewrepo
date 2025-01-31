@@ -21,8 +21,18 @@ wss.on('connection', (ws) => {
             } else {
                 users.set(username, { balance: 1000, ws });
                 ws.username = username;
-                ws.send(JSON.stringify({ type: 'loginSuccess', balance: 1000 }));
+                ws.send(JSON.stringify({ type: 'loginSuccess', balance: 1000, username }));
                 console.log(`Usuario ${username} ha iniciado sesión`);
+            }
+        } else if (data.type === 'restoreSession') {
+            const username = data.username;
+            if (users.has(username)) {
+                const user = users.get(username);
+                ws.username = username;
+                ws.send(JSON.stringify({ type: 'loginSuccess', balance: user.balance, username }));
+                console.log(`Usuario ${username} ha restaurado su sesión`);
+            } else {
+                ws.send(JSON.stringify({ type: 'error', message: 'Sesión no encontrada' }));
             }
         } else if (data.type === 'bet') {
             const username = ws.username;
@@ -43,20 +53,20 @@ wss.on('connection', (ws) => {
         } else if (data.type === 'withdraw') {
             const username = ws.username;
             const user = users.get(username);
+            const withdrawAmount = data.amount;
 
-            if (user.balance >= 250) {
+            if (user.balance >= withdrawAmount) {
+                user.balance -= withdrawAmount;
                 ws.send(JSON.stringify({ type: 'withdraw', balance: user.balance }));
-                user.balance = 0;
-                console.log(`Usuario ${username} ha retirado su saldo`);
+                console.log(`Usuario ${username} ha retirado ${withdrawAmount} monedas`);
             } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Necesitas al menos 250 monedas para retirar' }));
+                ws.send(JSON.stringify({ type: 'error', message: 'Saldo insuficiente para retirar' }));
             }
         }
     });
 
     ws.on('close', () => {
         if (ws.username) {
-            users.delete(ws.username);
             console.log(`Usuario ${ws.username} ha cerrado sesión`);
         }
     });
