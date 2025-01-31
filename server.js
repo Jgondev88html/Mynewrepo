@@ -2,131 +2,170 @@ const express = require("express");
 const session = require("express-session");
 const WebSocket = require("ws");
 const cors = require("cors");
-const RedisStore = require('connect-redis').default; // Cambio aquí
-const redis = require('redis');
+const RedisStore = require("connect-redis").default;
+const redis = require("redis");
 
+// Configuración inicial
 const app = express();
 const server = require("http").createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Configura Redis (usando variables de entorno en Render)
+// Configuración de Redis (para producción en Render)
 const redisClient = redis.createClient({
-    url: process.env.REDIS_URL || "redis://localhost:6379"
+  url: process.env.REDIS_URL || "redis://localhost:6379",
+  legacyMode: true // Necesario para versiones recientes de Redis
 });
 
-redisClient.on('connect', () => {
-    console.log('Conectado a Redis');
-});
+// Manejo de eventos de Redis
+redisClient.on("connect", () => console.log("✅ Conectado a Redis"))
+          .on("error", (err) => console.error("❌ Error de Redis:", err));
 
-redisClient.on('error', (err) => {
-    console.error('Error de conexión a Redis:', err);
-});
-
-// Crear instancia de RedisStore
+// Configuración de almacenamiento de sesiones
 const redisStore = new RedisStore({
-    client: redisClient,
-    prefix: "fortuna-express:"
+  client: redisClient,
+  prefix: "session:",
+  ttl: 1800 // 30 minutos
 });
+
+// Middlewares
+app.use(cors({
+  origin: "*", // Permite cualquier origen (ajusta en producción)
+  credentials: true
+}));
 
 app.use(express.json());
-app.use(cors());
+app.use(express.urlencoded({ extended: true }));
+
 app.use(
-    session({
-        store: redisStore, // Cambio aquí
-        secret: process.env.SESSION_SECRET || "clave_secreta",
-        resave: false,
-        saveUninitialized: false,
-        cookie: { secure: false, maxAge: 30 * 60 * 1000 }, // 30 minutos
-    })
+  session({
+    store: redisStore,
+    secret: process.env.SESSION_SECRET || "clave_secreta_dev",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 30 * 60 * 1000 // 30 minutos
+    }
+  })
 );
 
-let users = {}; // Almacenamiento en memoria de usuarios y sus intentos
+// Almacenamiento en memoria para el juego
+const gameState = {
+  users: new Map(), // <username, { coins: number, attempts: number }>
+  leaderboard: new Map()
+};
 
-// Verificar login del administrador
+// ================== RUTAS DE API ================== //
+app.get("/health", (req, res) => res.sendStatus(200));
+
+// Administración
 app.post("/admin/login", (req, res) => {
-    const { password } = req.body;
-    if (password === process.env.ADMIN_PASSWORD || "admin123") {
-        req.session.admin = true;
-        res.json({ success: true });
-    } else {
-        res.status(401).json({ success: false, message: "Contraseña incorrecta" });
-    }
+  if (req.body.password === (process.env.ADMIN_PASSWORD || "admin123")) {
+    req.session.admin = true;
+    return res.json({ success: true });
+  }
+  res.status(401).json({ success: false });
 });
 
-// Verificar si la sesión del administrador está activa
-app.get("/admin/session", (req, res) => {
-    res.json({ isAdmin: req.session.admin || false });
-});
-
-// Cerrar sesión del administrador
-app.post("/admin/logout", (req, res) => {
-    req.session.destroy(() => {
-        res.json({ success: true });
-    });
-});
-
-// Recargar intentos de un usuario
 app.post("/admin/recharge", (req, res) => {
-    if (!req.session.admin) {
-        return res.status(403).json({ message: "Acceso denegado" });
-    }
-    const { username } = req.body;
-    if (users[username]) {
-        users[username].attempts = 3;
-        res.json({ success: true });
-    } else {
-        res.status(404).json({ success: false, message: "Usuario no encontrado" });
-    }
+  if (!req.session.admin) return res.sendStatus(403);
+  
+  const user = gameState.users.get(req.body.username);
+  if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+  
+  user.attempts = 3;
+  res.json({ success: true });
 });
 
-// Manejo de WebSockets
+// ================== WEBSOCKETS ================== //
 wss.on("connection", (ws) => {
-    ws.on("message", (message) => {
-        try {
-            const data = JSON.parse(message);
+  console.log("🔌 Nueva conexión WebSocket");
 
-            if (data.type === "register") {
-                if (users[data.username]) {
-                    ws.send(JSON.stringify({ type: "error", message: "Nombre de usuario ya en uso" }));
-                } else {
-                    users[data.username] = { coins: 0, attempts: 3 };
-                    ws.send(JSON.stringify({ type: "success", coins: 0, attempts: 3 }));
-                }
-            }
+  ws.on("message", async (rawData) => {
+    try {
+      const data = JSON.parse(rawData);
+      const user = gameState.users.get(data.username);
 
-            if (data.type === "play") {
-                const user = users[data.username];
-                if (user && user.attempts > 0) {
-                    const result = Math.random() > 0.5 ? 10 : -5; // Ganar o perder monedas
-                    user.coins += result;
-                    user.attempts -= 1;
+      switch (data.type) {
+        case "register":
+          if (gameState.users.has(data.username)) {
+            return ws.send(JSON.stringify({ 
+              type: "error", 
+              message: "Nombre ya en uso" 
+            }));
+          }
+          
+          gameState.users.set(data.username, { 
+            coins: 0, 
+            attempts: 3 
+          });
+          
+          ws.send(JSON.stringify({
+            type: "session",
+            coins: 0,
+            attempts: 3
+          }));
+          break;
 
-                    ws.send(JSON.stringify({ type: "update", coins: user.coins, attempts: user.attempts, result }));
-                } else {
-                    ws.send(JSON.stringify({ type: "error", message: "No tienes más intentos disponibles" }));
-                }
-            }
+        case "play":
+          if (!user || user.attempts <= 0) {
+            return ws.send(JSON.stringify({
+              type: "error",
+              message: "Sin intentos disponibles"
+            }));
+          }
 
-            if (data.type === "withdraw") {
-                const user = users[data.username];
-                if (user && user.coins >= 250) {
-                    user.coins -= 250;
-                    ws.send(JSON.stringify({ type: "update", coins: user.coins }));
-                    // Aquí puedes agregar la lógica para procesar el retiro
-                } else {
-                    ws.send(JSON.stringify({ type: "error", message: "No tienes suficientes monedas para retirar" }));
-                }
-            }
-        } catch (error) {
-            console.error("Error processing message:", error);
-            ws.send(JSON.stringify({ type: "error", message: "Error procesando la solicitud" }));
-        }
-    });
+          const result = Math.random() > 0.5 ? 10 : -5;
+          user.coins += result;
+          user.attempts--;
+          
+          ws.send(JSON.stringify({
+            type: "update",
+            coins: user.coins,
+            attempts: user.attempts,
+            result
+          }));
+          break;
 
-    ws.on("close", () => {
-        console.log("Cliente desconectado");
-    });
+        case "withdraw":
+          if (user.coins < 250) {
+            return ws.send(JSON.stringify({
+              type: "error",
+              message: "Mínimo 250 monedas"
+            }));
+          }
+          
+          user.coins -= 250;
+          ws.send(JSON.stringify({
+            type: "update",
+            coins: user.coins
+          }));
+          break;
+      }
+    } catch (error) {
+      console.error("Error en WebSocket:", error);
+      ws.send(JSON.stringify({
+        type: "error",
+        message: "Error interno del servidor"
+      }));
+    }
+  });
+
+  ws.on("close", () => console.log("🔌 Conexión WebSocket cerrada"));
 });
 
+// ================== INICIO DEL SERVIDOR ================== //
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Servidor corriendo en el puerto ${PORT}`));
+
+(async () => {
+  await redisClient.connect();
+  server.listen(PORT, () => {
+    console.log(`
+    🚀 Servidor listo en puerto ${PORT}
+    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    Modo: ${process.env.NODE_ENV || "development"}
+    Redis: ${redisClient.isReady ? "conectado" : "desconectado"}
+    ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+    `);
+  });
+})();
