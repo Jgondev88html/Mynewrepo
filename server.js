@@ -89,14 +89,15 @@ wss.on('connection', (ws) => {
             } else {
                 ws.send(JSON.stringify({ type: 'error', message: 'Contraseña incorrecta' }));
             }
-        } else if (data.type === 'creditAttempts') {
+        } else if (data.type === 'creditBalance') {
             if (ws.isAdmin) {
                 const username = data.username;
+                const amount = data.amount;
                 if (users.has(username)) {
                     const user = users.get(username);
-                    user.loginAttempts = 0; // Restablecer intentos
-                    ws.send(JSON.stringify({ type: 'success', message: `Intentos restablecidos para ${username}` }));
-                    console.log(`Administrador restableció los intentos de ${username}`);
+                    user.balance += amount;
+                    ws.send(JSON.stringify({ type: 'success', message: `Se acreditaron ${amount} monedas a ${username}` }));
+                    console.log(`Administrador acreditó ${amount} monedas a ${username}`);
                 } else {
                     ws.send(JSON.stringify({ type: 'error', message: 'Usuario no encontrado' }));
                 }
