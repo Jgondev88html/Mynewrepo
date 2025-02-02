@@ -57,7 +57,7 @@ wss.on('connection', (ws) => {
             const betAmount = data.amount;
 
             if (user.balance >= betAmount && user.attempts > 0) {
-                const win = Math.random() < 0.5.5; // 55% de probabilidad de ganar
+                const win = Math.random() < 0.55; // 55% de probabilidad de ganar
                 if (win) {
                     user.balance += betAmount;
                     user.consecutiveWins = (user.consecutiveWins || 0) + 1;
