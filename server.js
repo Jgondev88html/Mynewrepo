@@ -7,7 +7,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const users = new Map();
-const adminPassword = "admin123";
+const adminPassword = "whoamiroot";
 
 wss.on('connection', (ws) => {
     console.log('Nuevo cliente conectado');
