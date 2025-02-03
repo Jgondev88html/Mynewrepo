@@ -8,62 +8,123 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const users = {};
+const users = {}; // Almacena usuarios por username
 const MAX_LIVES = 3;
 const COIN_PENALTY = 50;
 const WITHDRAW_THRESHOLD = 250;
 
-wss.on('connection', (ws) => {
-    ws.on('message', (message) => {
-        const data = JSON.parse(message);
-        if (data.type === 'login') {
-            users[ws.id] = { ...data, lives: MAX_LIVES, coins: 0 };
-            ws.id = data.username;
-            ws.send(JSON.stringify({ type: 'loginSuccess', user: users[ws.id] }));
-        } else if (data.type === 'gameOver') {
-            const user = users[ws.id];
-            user.lives -= 1;
-            user.coins -= COIN_PENALTY;
-            if (user.lives <= 0) {
-                user.lives = 0;
-            }
-            ws.send(JSON.stringify({ type: 'update', user }));
-        } else if (data.type === 'withdraw') {
-            const user = users[ws.id];
-            if (user.coins >= WITHDRAW_THRESHOLD) {
-                sendWithdrawalEmail(data.email, data.phone, data.amount);
-                user.coins -= data.amount;
-                ws.send(JSON.stringify({ type: 'update', user }));
-            }
-        }
-    });
+// Configuración de Nodemailer (reemplaza con tus credenciales)
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'tuemail@gmail.com',
+    pass: 'tucontraseña'
+  }
 });
 
-function sendWithdrawalEmail(email, phone, amount) {
-    const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: 'tuemail@gmail.com',
-            pass: 'tucontraseña'
-        }
-    });
+wss.on('connection', (ws) => {
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      
+      switch (data.type) {
+        case 'login':
+          handleLogin(ws, data);
+          break;
+          
+        case 'gameOver':
+          handleGameOver(ws, data);
+          break;
+          
+        case 'withdraw':
+          handleWithdraw(ws, data);
+          break;
+      }
+    } catch (error) {
+      console.error('Error procesando mensaje:', error);
+    }
+  });
 
-    const mailOptions = {
-        from: 'tuemail@gmail.com',
-        to: 'tuemail@gmail.com',
-        subject: 'Solicitud de Retiro',
-        text: `El usuario con el número de teléfono ${phone} ha solicitado un retiro de ${amount} monedas.`
+  ws.on('close', () => {
+    // Limpiar recursos si es necesario
+  });
+});
+
+function handleLogin(ws, data) {
+  if (!data.username) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Username requerido' }));
+    return;
+  }
+
+  // Crear nuevo usuario si no existe
+  if (!users[data.username]) {
+    users[data.username] = {
+      username: data.username,
+      lives: MAX_LIVES,
+      coins: 0,
+      ws: ws
     };
+  }
 
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            console.log(error);
-        } else {
-            console.log('Email enviado: ' + info.response);
-        }
-    });
+  // Actualizar conexión WebSocket
+  users[data.username].ws = ws;
+
+  // Enviar datos actualizados al cliente
+  ws.send(JSON.stringify({
+    type: 'loginSuccess',
+    user: {
+      username: users[data.username].username,
+      lives: users[data.username].lives,
+      coins: users[data.username].coins
+    }
+  }));
+}
+
+function handleGameOver(ws, data) {
+  const username = Object.keys(users).find(key => users[key].ws === ws);
+  
+  if (username && users[username]) {
+    users[username].lives = Math.max(0, users[username].lives - 1);
+    users[username].coins = Math.max(0, users[username].coins - COIN_PENALTY);
+    
+    ws.send(JSON.stringify({
+      type: 'update',
+      user: users[username]
+    }));
+  }
+}
+
+function handleWithdraw(ws, data) {
+  const username = Object.keys(users).find(key => users[key].ws === ws);
+  
+  if (username && users[username]) {
+    if (users[username].coins >= WITHDRAW_THRESHOLD) {
+      sendWithdrawalEmail(data.email, data.phone, data.amount);
+      users[username].coins -= data.amount;
+      
+      ws.send(JSON.stringify({
+        type: 'update',
+        user: users[username]
+      }));
+    }
+  }
+}
+
+function sendWithdrawalEmail(phone, amount) {
+  const mailOptions = {
+    from: 'tuemail@gmail.com',
+    to: 'tuemail@gmail.com',
+    subject: 'Solicitud de Retiro',
+    text: `Solicitud de retiro:
+           - Número: ${phone}
+           - Monto: ${amount} monedas`
+  };
+
+  transporter.sendMail(mailOptions, (error) => {
+    if (error) console.error('Error enviando email:', error);
+  });
 }
 
 server.listen(3000, () => {
-    console.log('Servidor escuchando en el puerto 3000');
+  console.log('Servidor escuchando en http://localhost:3000');
 });
