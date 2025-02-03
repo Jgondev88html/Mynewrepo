@@ -1,134 +1,69 @@
+// server.js
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const nodemailer = require('nodemailer');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const users = new Map();
-const adminPassword = "whoamiroot";
+const users = {};
+const MAX_LIVES = 3;
+const COIN_PENALTY = 50;
+const WITHDRAW_THRESHOLD = 250;
 
 wss.on('connection', (ws) => {
-    console.log('Nuevo cliente conectado');
-
     ws.on('message', (message) => {
         const data = JSON.parse(message);
-
         if (data.type === 'login') {
-            const username = data.username;
-            const user = users.get(username);
-
-            if (user && user.loginAttempts >= 3) {
-                ws.send(JSON.stringify({ type: 'error', message: 'Cuenta bloqueada. Contacta al administrador.' }));
-                return;
+            users[ws.id] = { ...data, lives: MAX_LIVES, coins: 0 };
+            ws.id = data.username;
+            ws.send(JSON.stringify({ type: 'loginSuccess', user: users[ws.id] }));
+        } else if (data.type === 'gameOver') {
+            const user = users[ws.id];
+            user.lives -= 1;
+            user.coins -= COIN_PENALTY;
+            if (user.lives <= 0) {
+                user.lives = 0;
             }
-
-            if (users.has(username)) {
-                if (!user.loginAttempts) user.loginAttempts = 0;
-                user.loginAttempts++;
-                ws.send(JSON.stringify({ type: 'error', message: 'Nombre de usuario ya existe' }));
-                if (user.loginAttempts >= 3) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Cuenta bloqueada. Contacta al administrador.' }));
-                }
-            } else {
-                users.set(username, { balance: 50, ws, loginAttempts: 0, attempts: 10, lastWithdrawDate: null, consecutiveWins: 0 });
-                ws.username = username;
-                ws.send(JSON.stringify({ type: 'loginSuccess', balance: 50, username, attempts: 10 }));
-                console.log(`Usuario ${username} ha iniciado sesión`);
-            }
-        } else if (data.type === 'restoreSession') {
-            const username = data.username;
-            if (users.has(username)) {
-                const user = users.get(username);
-                if (user.loginAttempts >= 3) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Cuenta bloqueada. Contacta al administrador.' }));
-                    return;
-                }
-                ws.username = username;
-                ws.send(JSON.stringify({ type: 'loginSuccess', balance: user.balance, username, attempts: user.attempts }));
-                console.log(`Usuario ${username} ha restaurado su sesión`);
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Sesión no encontrada' }));
-            }
-        } else if (data.type === 'bet') {
-            const username = ws.username;
-            const user = users.get(username);
-            const betAmount = data.amount;
-
-            if (user.balance >= betAmount && user.attempts > 0) {
-                const win = Math.random() < 0.55; // 55% de probabilidad de ganar
-                if (win) {
-                    user.balance += betAmount;
-                    user.consecutiveWins = (user.consecutiveWins || 0) + 1;
-                    if (user.consecutiveWins >= 3) {
-                        user.balance += 100; // Bono por 3 victorias seguidas
-                        ws.send(JSON.stringify({ type: 'bonus', message: '¡Felicidades! Has ganado 3 veces seguidas. Bono de 100 monedas.' }));
-                        user.consecutiveWins = 0;
-                    }
-                } else {
-                    user.balance -= betAmount;
-                    user.consecutiveWins = 0;
-                }
-                user.attempts--;
-                ws.send(JSON.stringify({ type: 'result', result: win ? 'win' : 'lose', balance: user.balance, attempts: user.attempts }));
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: user.attempts <= 0 ? 'No tienes más intentos hoy' : 'Saldo insuficiente' }));
-            }
+            ws.send(JSON.stringify({ type: 'update', user }));
         } else if (data.type === 'withdraw') {
-            const username = ws.username;
-            const user = users.get(username);
-            const withdrawAmount = data.amount;
-
-            const today = new Date().toDateString();
-            if (user.lastWithdrawDate === today) {
-                ws.send(JSON.stringify({ type: 'error', message: 'Solo puedes retirar una vez al día' }));
-                return;
+            const user = users[ws.id];
+            if (user.coins >= WITHDRAW_THRESHOLD) {
+                sendWithdrawalEmail(data.email, data.phone, data.amount);
+                user.coins -= data.amount;
+                ws.send(JSON.stringify({ type: 'update', user }));
             }
-
-            if (withdrawAmount < 250) {
-                ws.send(JSON.stringify({ type: 'error', message: 'El mínimo de retiro es 250 monedas' }));
-            } else if (user.balance >= withdrawAmount) {
-                user.balance -= withdrawAmount;
-                user.lastWithdrawDate = today;
-                ws.send(JSON.stringify({ type: 'withdraw', balance: user.balance }));
-                console.log(`Usuario ${username} ha retirado ${withdrawAmount} monedas`);
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Saldo insuficiente para retirar' }));
-            }
-        } else if (data.type === 'adminLogin') {
-            if (data.password === adminPassword) {
-                ws.isAdmin = true;
-                ws.send(JSON.stringify({ type: 'adminLoginSuccess' }));
-                console.log('Administrador ha iniciado sesión');
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Contraseña incorrecta' }));
-            }
-        } else if (data.type === 'creditBalance') {
-            if (ws.isAdmin) {
-                const username = data.username;
-                const amount = data.amount;
-                if (users.has(username)) {
-                    const user = users.get(username);
-                    user.balance += amount;
-                    ws.send(JSON.stringify({ type: 'success', message: `Se acreditaron ${amount} monedas a ${username}` }));
-                    console.log(`Administrador acreditó ${amount} monedas a ${username}`);
-                } else {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Usuario no encontrado' }));
-                }
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'No tienes permisos de administrador' }));
-            }
-        }
-    });
-
-    ws.on('close', () => {
-        if (ws.username) {
-            console.log(`Usuario ${ws.username} ha cerrado sesión`);
         }
     });
 });
 
-server.listen(process.env.PORT || 3000, () => {
-    console.log(`Servidor escuchando en el puerto ${server.address().port}`);
+function sendWithdrawalEmail(email, phone, amount) {
+    const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+            user: 'tuemail@gmail.com',
+            pass: 'tucontraseña'
+        }
+    });
+
+    const mailOptions = {
+        from: 'tuemail@gmail.com',
+        to: 'tuemail@gmail.com',
+        subject: 'Solicitud de Retiro',
+        text: `El usuario con el número de teléfono ${phone} ha solicitado un retiro de ${amount} monedas.`
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+        if (error) {
+            console.log(error);
+        } else {
+            console.log('Email enviado: ' + info.response);
+        }
+    });
+}
+
+server.listen(3000, () => {
+    console.log('Servidor escuchando en el puerto 3000');
 });
