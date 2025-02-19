@@ -1,7 +1,6 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws'); // Cambié 'constante' por 'const'
-const path = require('path');
+const WebSocket = require('ws');
 
 // Crear aplicación Express
 const app = express();
@@ -12,7 +11,7 @@ const server = http.createServer(app);
 // Crear servidor WebSocket que usa el servidor HTTP
 const wss = new WebSocket.Server({ server });
 
-let messages = []; // Cambié 'dejar' por 'let'
+let messages = [];
 
 // Manejar la conexión WebSocket
 wss.on('connection', (ws) => {
@@ -56,173 +55,31 @@ app.get('/', (req, res) => {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>ChatSphere</title>
             <style>
-                * {
-                    box-sizing: border-box;
-                    margin: 0;
-                    padding: 0;
-                    font-family: 'Arial', sans-serif;
-                }
-
+                /* Estilos básicos */
                 body {
+                    font-family: Arial, sans-serif;
                     background: #f0f2f5;
-                    height: 100vh;
+                    margin: 0;
                 }
-
-                /* Login */
-                #login-container {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    height: 100vh;
-                    padding: 20px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                }
-
-                .login-form {
-                    background: white;
-                    padding: 2rem;
-                    border-radius: 10px;
-                    box-shadow: 0 0 20px rgba(0,0,0,0.1);
-                    width: 100%;
-                    max-width: 400px;
-                }
-
-                .login-form h1 {
-                    color: #2d3748;
-                    text-align: center;
-                    margin-bottom: 2rem;
-                }
-
-                .input-group {
-                    margin-bottom: 1.5rem;
-                }
-
-                input {
-                    width: 100%;
-                    padding: 12px;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 5px;
-                    font-size: 16px;
-                    margin-left: 10px;
-                    outline-color: green;
-                }
-
-                button {
-                    width: 18%;
-                    padding: 12px;
-                    background: #48bb78;
-                    color: white;
-                    border: none;
-                    border-radius: 5px;
-                    font-size: 16px;
-                    cursor: pointer;
-                    transition: background 0.3s;
-                    margin-right: 8px;
-                }
-
-                button:hover {
-                    background: #38a169;
-                }
-
-                /* Chat */
-                #chat-container {
-                    display: none;
-                    height: 100vh;
-                    flex-direction: column;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                }
-
-                #chat-header {
-                    background: #48bb78;
-                    color: white;
-                    padding: 1rem;
-                    border-radius: 10px 10px 0 0;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-
-                #chat-messages {
-                    flex-grow: 1;
-                    background: white;
-                    padding: 20px;
-                    overflow-y: auto;
-                    border: 1px solid #e2e8f0;
-                    max-height: 75vh;
-                }
-
-                .message {
-                    margin-bottom: 15px;
-                    padding: 10px;
-                    border-radius: 8px;
-                    background: #f7fafc;
-                    max-width: 80%;
-                }
-
-                .message span {
-                    display: block;
-                    font-size: 0.8rem;
-                    color: #718096;
-                    margin-top: 5px;
-                }
-
-                #message-input {
-                    display: flex;
-                    padding: 20px 0;
-                    background: #48bb78;
-                    border-radius: 10px;
-                    position: sticky;
-                    bottom: 0;
-                    z-index: 10;
-                }
-
-                #message-text {
-                    flex-grow: 1;
-                    padding: 12px;
-                    border: 1px solid #e2e8f0;
-                    border-radius: 5px;
-                    width: 90%;
-                    background: white;
-                }
-
-                /* Responsive */
-                @media (max-width: 600px) {
-                    .login-form {
-                        padding: 1.5rem;
-                    }
-
-                    #chat-container {
-                        padding: 10px;
-                    }
-
-                    .message {
-                        max-width: 90%;
-                    }
-                }
+                /* Agregar más estilos aquí */
             </style>
         </head>
         <body>
-            <!-- Login -->
+            <!-- Contenedor de inicio de sesión -->
             <div id="login-container">
-                <form class="login-form" id="loginForm">
-                    <h1>ChatSphere</h1>
-                    <div class="input-group">
-                        <input class="us" type="text" id="username" placeholder="Usuario" required>
-                    </div>
-                    <button class="btn" type="submit">Ingresar</button>
+                <form id="login-form">
+                    <input type="text" id="username" placeholder="Nombre de usuario" required>
+                    <button type="submit">Ingresar</button>
                 </form>
             </div>
 
-            <!-- Chat -->
-            <div id="chat-container">
+            <!-- Contenedor de chat -->
+            <div id="chat-container" style="display:none;">
                 <div id="chat-header">
                     <h1>ChatSphere</h1>
                     <button onclick="clearChat()">🗑️</button>
                 </div>
-                <div id="chat-messages"></div>
+                <div id="messages"></div>
                 <div id="message-input">
                     <input type="text" id="message-text" placeholder="Escribe un mensaje...">
                     <button onclick="sendMessage()">Enviar</button>
@@ -243,72 +100,72 @@ app.get('/', (req, res) => {
                     messages.forEach(appendMessage);
                 };
 
-                // Login
-                document.getElementById('loginForm').addEventListener('submit', function(e) {
+                // Función de login
+                document.getElementById('login-form').addEventListener('submit', function(e) {
                     e.preventDefault();
-                    
                     const username = document.getElementById('username').value;
-                    
                     if (username) {
                         localStorage.setItem('username', username);
                         document.getElementById('login-container').style.display = 'none';
-                        document.getElementById('chat-container').style.display = 'flex';
+                        document.getElementById('chat-container').style.display = 'block';
                         loadMessages();
                     } else {
-                        alert('Por favor completa el campo de usuario');
+                        alert('Por favor ingresa un nombre de usuario');
                     }
                 });
 
-                // Chat
+                // Función para enviar mensajes
                 function sendMessage() {
                     const messageInput = document.getElementById('message-text');
                     const message = messageInput.value.trim();
-                    
-                    if(message) {
+                    if (message) {
                         const newMessage = {
-                            user: localStorage.getItem('username'),
+                            username: localStorage.getItem('username'),
                             text: message,
                             timestamp: new Date().toLocaleTimeString(),
-                            type: 'message'
                         };
-                        
                         socket.send(JSON.stringify(newMessage));
                         messageInput.value = '';
                     }
                 }
 
+                // Función para mostrar mensajes en el chat
                 function appendMessage(message) {
-                    const chatMessages = document.getElementById('chat-messages');
+                    const messagesContainer = document.getElementById('messages');
                     const messageDiv = document.createElement('div');
                     messageDiv.className = 'message';
                     messageDiv.innerHTML = `
-                        <strong>${message.user}</strong>
+                        <strong>${message.username}</strong>
                         <p>${message.text}</p>
                         <span>${message.timestamp}</span>
                     `;
-                    chatMessages.appendChild(messageDiv);
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                    messagesContainer.appendChild(messageDiv);
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 }
 
+                // Función para cargar mensajes del localStorage
                 function loadMessages() {
                     const messages = JSON.parse(localStorage.getItem('chatMessages') || '[]');
                     messages.forEach(appendMessage);
                 }
 
+                // Función para limpiar el chat
                 function clearChat() {
-                    const chatMessages = document.getElementById('chat-messages');
-                    chatMessages.innerHTML = '';
+                    const messagesContainer = document.getElementById('messages');
+                    messagesContainer.innerHTML = '';
                     localStorage.setItem('chatMessages', JSON.stringify([]));
                 }
 
+                // Función para guardar mensajes en localStorage
                 function saveMessages(messages) {
                     localStorage.setItem('chatMessages', JSON.stringify(messages));
                 }
 
+                // Al cargar la página, si ya hay un usuario registrado, mostrar el chat
                 window.addEventListener('DOMContentLoaded', () => {
-                    if(localStorage.getItem('username')) {
+                    if (localStorage.getItem('username')) {
                         document.getElementById('login-container').style.display = 'none';
-                        document.getElementById('chat-container').style.display = 'flex';
+                        document.getElementById('chat-container').style.display = 'block';
                         loadMessages();
                     }
                 });
@@ -322,3 +179,4 @@ app.get('/', (req, res) => {
 server.listen(3000, () => {
     console.log('Servidor escuchando en http://localhost:3000');
 });
+</script>
