@@ -1,50 +1,42 @@
+// server.js
+const express = require('express');
+const http = require('http');
 const WebSocket = require('ws');
+
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
 let messages = [];
 
-// WebSocket handler
-const handler = (req, res) => {
-    // Solo permite conexiones WebSocket en esta ruta
-    if (req.method === 'GET' && req.url === '/ws') {
-        const { socket } = req;
+// Serve static files
+app.use(express.static('public'));
 
-        const ws = new WebSocket({ socket });
+// WebSocket connection
+wss.on('connection', (ws) => {
+    // Send previous messages to the new client
+    ws.send(JSON.stringify(messages));
 
-        ws.on('connection', (ws) => {
-            console.log('Nuevo cliente conectado');
+    // Broadcast new message to all clients
+    ws.on('message', (message) => {
+        const newMessage = JSON.parse(message);
 
-            // Envía todos los mensajes previos al nuevo cliente
-            ws.send(JSON.stringify(messages));
-
-            // Manejo de mensajes recibidos
-            ws.on('message', (message) => {
-                const newMessage = JSON.parse(message);
-
-                if (newMessage.type === 'clear') {
-                    // Limpiar solo para el usuario que envía la petición
-                    ws.send(JSON.stringify([]));
-                } else {
-                    // Agregar el mensaje a la lista global de mensajes
-                    messages.push(newMessage);
-
-                    // Limitar la cantidad de mensajes a 100 más recientes
-                    if (messages.length > 100) {
-                        messages.shift(); // Elimina el mensaje más antiguo
-                    }
-
-                    // Enviar el mensaje a todos los demás clientes conectados
-                    ws.clients.forEach(client => {
-                        if (client.readyState === WebSocket.OPEN) {
-                            client.send(JSON.stringify([newMessage]));
-                        }
-                    });
+        if (newMessage.type === 'clear') {
+            // Handle clearing chat only for the sender
+            ws.send(JSON.stringify([])); // Send empty array to clear chat for this user
+        } else {
+            messages.push(newMessage);
+            // Broadcast to all other connected clients
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify([newMessage]));
                 }
             });
-        });
-    } else {
-        // Si no es WebSocket, respondemos con un mensaje de error
-        res.status(404).send('Not Found');
-    }
-};
+        }
+    });
+});
 
-module.exports = handler;
+// Start server
+module.exports = server.listen(3000, () => {
+    console.log('Server is listening on port 3000');
+});
