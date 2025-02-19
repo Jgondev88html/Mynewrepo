@@ -1,17 +1,15 @@
 {
-  "name": "chat",
+  "name": "chat-websocket",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Servidor WebSocket para un chat en tiempo real",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "express": "^4.21.2",
-    "http": "^0.0.1-security",
-    "ws": "^8.18.0"
+    "ws": "^8.4.0"
+  },
+  "engines": {
+    "node": "16.x"
   }
 }
