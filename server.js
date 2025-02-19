@@ -1,64 +1,50 @@
-const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
-const bodyParser = require('body-parser');
-const session = require('express-session');
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+let messages = [];
 
-const PORT = process.env.PORT || 3000;
+// WebSocket handler
+const handler = (req, res) => {
+    // Solo permite conexiones WebSocket en esta ruta
+    if (req.method === 'GET' && req.url === '/ws') {
+        const { socket } = req;
 
-let users = {}; // Almacenamiento temporal de usuarios
+        const ws = new WebSocket({ socket });
 
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(session({
-    secret: 'pixelrunner_secret',
-    resave: false,
-    saveUninitialized: true,
-    cookie: { maxAge: 30 * 60 * 1000 } // 30 minutos
-}));
+        ws.on('connection', (ws) => {
+            console.log('Nuevo cliente conectado');
 
-wss.on('connection', (ws) => {
-    ws.on('message', (message) => {
-        const data = JSON.parse(message);
+            // Envía todos los mensajes previos al nuevo cliente
+            ws.send(JSON.stringify(messages));
 
-        if (data.type === 'login') {
-            const { username } = data;
-            if (!username) {
-                return ws.send(JSON.stringify({ type: 'error', message: 'Nombre de usuario requerido' }));
-            }
-            if (!users[username]) {
-                users[username] = { coins: 0, lives: 5 };
-            }
-            ws.username = username;
-            ws.send(JSON.stringify({ type: 'login-success', user: users[username] }));
-        }
+            // Manejo de mensajes recibidos
+            ws.on('message', (message) => {
+                const newMessage = JSON.parse(message);
 
-        if (data.type === 'admin-login') {
-            const { password } = data;
-            if (password === 'admin123') {
-                ws.isAdmin = true;
-                ws.send(JSON.stringify({ type: 'admin-success', message: 'Autenticado como admin' }));
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Contraseña incorrecta' }));
-            }
-        }
+                if (newMessage.type === 'clear') {
+                    // Limpiar solo para el usuario que envía la petición
+                    ws.send(JSON.stringify([]));
+                } else {
+                    // Agregar el mensaje a la lista global de mensajes
+                    messages.push(newMessage);
 
-        if (data.type === 'add-lives' && ws.isAdmin) {
-            const { username } = data;
-            if (users[username]) {
-                users[username].lives = 5;
-                ws.send(JSON.stringify({ type: 'update-success', message: `Vidas recargadas para ${username}` }));
-            } else {
-                ws.send(JSON.stringify({ type: 'error', message: 'Usuario no encontrado' }));
-            }
-        }
-    });
-});
+                    // Limitar la cantidad de mensajes a 100 más recientes
+                    if (messages.length > 100) {
+                        messages.shift(); // Elimina el mensaje más antiguo
+                    }
 
-server.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+                    // Enviar el mensaje a todos los demás clientes conectados
+                    ws.clients.forEach(client => {
+                        if (client.readyState === WebSocket.OPEN) {
+                            client.send(JSON.stringify([newMessage]));
+                        }
+                    });
+                }
+            });
+        });
+    } else {
+        // Si no es WebSocket, respondemos con un mensaje de error
+        res.status(404).send('Not Found');
+    }
+};
+
+module.exports = handler;
