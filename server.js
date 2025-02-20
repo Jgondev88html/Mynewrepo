@@ -10,15 +10,23 @@ const wss = new WebSocket.Server({ server });
 let messages = [];
 let users = new Map();
 
-// Función para escapar caracteres HTML
+// Función para escapar HTML solo en texto normal
 function escapeHtml(text) {
-  return text.replace(/[&<>"']/g, (m) => ({
+  return text.replace(/[&<>]/g, (m) => ({
     '&': '&amp;',
     '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
+    '>': '&gt;'
   }[m]));
+}
+
+// Validar protocolos permitidos en URLs
+function isValidProtocol(url) {
+  try {
+    const parsed = new URL(url);
+    return ['http:', 'https:', 'ftp:', 'file:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
 }
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -40,7 +48,7 @@ wss.on('connection', (ws) => {
           username = data.username + randomNumber;
           ws.send(JSON.stringify({
             type: 'error',
-            message: `⚠️ Nombre de usuario ya en uso. Te hemos asignado el nombre: ${escapeHtml(username)}`
+            message: `⚠️ Nombre de usuario ya en uso. Te hemos asignado: ${escapeHtml(username)}`
           }));
         } else {
           username = data.username;
@@ -51,17 +59,21 @@ wss.on('connection', (ws) => {
         break;
 
       case 'message':
-        const urlRegex = /(\b(?:https?|ftp|file):\/\/\S+)/gi;
+        const urlRegex = /(\b(https?|ftp|file):\/\/\S+)/gi;
         const parts = data.text.split(urlRegex);
         let processedText = '';
         
         for (let i = 0; i < parts.length; i++) {
-          if (i % 2 === 0) {
+          if (i % 2 === 0 || !parts[i]) {
             processedText += escapeHtml(parts[i]);
           } else {
-            const url = parts[i];
-            const escapedUrl = escapeHtml(url);
-            processedText += `<a href="${escapedUrl}" target="_blank" rel="noopener">${escapedUrl}</a>`;
+            const originalUrl = parts[i];
+            if (isValidProtocol(originalUrl)) {
+              const encodedUrl = encodeURI(originalUrl);
+              processedText += `<a href="${encodedUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(originalUrl)}</a>`;
+            } else {
+              processedText += escapeHtml(originalUrl);
+            }
           }
         }
 
@@ -90,11 +102,6 @@ wss.on('connection', (ws) => {
             type: 'privateMessage'
           };
           recipientUser.ws.send(JSON.stringify([privateMessage]));
-        } else {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: '⚠️ Usuario no encontrado'
-          }));
         }
         break;
 
@@ -138,5 +145,5 @@ function broadcast(data) {
 }
 
 server.listen(3000, () => {
-  console.log('🚀 Servidor seguro corriendo en http://localhost:3000');
+  console.log('🚀 Chat seguro con enlaces activos: http://localhost:3000');
 });
