@@ -19,7 +19,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     const data = JSON.parse(message);
 
-    switch(data.type) {
+    switch (data.type) {
       case 'login':
         // Verificar si el nombre de usuario ya existe
         const usernameExists = Array.from(users.values())
@@ -46,7 +46,7 @@ wss.on('connection', (ws) => {
       case 'message':
         // Procesar el mensaje con enlaces
         const messageWithLinks = data.text.replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank">$1</a>');
-        
+
         const messageData = {
           user: username,
           text: messageWithLinks,
