@@ -13,7 +13,7 @@ let users = new Map();
 app.use(express.static(path.join(__dirname, 'public')));
 
 wss.on('connection', (ws) => {
-  let userId = Date.now();
+  let userId = Date.now(); // Usamos la fecha para un identificador único por sesión
   let username = '';
 
   ws.on('message', (message) => {
@@ -37,17 +37,17 @@ wss.on('connection', (ws) => {
           username = data.username;
         }
 
-        users.set(userId, {
-          username: username,
-          ws: ws
-        });
+        // Guardamos el usuario con su id único
+        users.set(userId, { username: username, ws: ws });
+
+        // Mandamos la lista de usuarios activos
         broadcastUsers();
         break;
 
       case 'message':
         // Procesamos los enlaces en los mensajes
         const messageWithLinks = data.text.replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank">$1</a>');
-
+        
         const messageData = {
           user: username,
           text: messageWithLinks,
@@ -56,7 +56,7 @@ wss.on('connection', (ws) => {
         };
 
         messages.push(messageData);
-        if (messages.length > 100) messages.shift();
+        if (messages.length > 100) messages.shift(); // Mantener solo los últimos 100 mensajes
         broadcast(JSON.stringify([messageData]));
         break;
 
@@ -64,7 +64,7 @@ wss.on('connection', (ws) => {
         // Enviar un mensaje privado a un usuario específico
         const recipient = data.recipient;
         const recipientUser = Array.from(users.values()).find(user => user.username === recipient);
-
+        
         if (recipientUser) {
           const privateMessage = {
             user: username,
@@ -82,11 +82,12 @@ wss.on('connection', (ws) => {
         break;
 
       case 'clear':
-        messages = [];
-        broadcast(JSON.stringify({ type: 'clear' }));
+        // Solo se limpia el chat para el usuario que lo solicita
+        ws.send(JSON.stringify({ type: 'clear' }));
         break;
 
       case 'getUsers':
+        // Enviar la lista de usuarios activos
         ws.send(JSON.stringify({
           type: 'activeUsers',
           users: Array.from(users.values()).map(u => u.username)
@@ -97,7 +98,7 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     users.delete(userId);
-    broadcastUsers();
+    broadcastUsers(); // Actualizamos la lista de usuarios activos
   });
 });
 
