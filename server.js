@@ -8,7 +8,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 let messages = [];
-let users = new Map();
+let users = new Map(); // Almacena los usuarios activos
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -21,14 +21,13 @@ wss.on('connection', (ws) => {
 
     switch(data.type) {
       case 'login':
-        // Verifica si el nombre de usuario ya existe
+        // Verificar si el nombre de usuario ya existe
         const usernameExists = Array.from(users.values())
           .some(user => user.username.toLowerCase() === data.username.toLowerCase());
 
         if (usernameExists) {
-          // Si el nombre de usuario existe, agrega un número aleatorio
           const randomNumber = Math.floor(Math.random() * 1000);
-          username = data.username + randomNumber;
+          username = data.username + randomNumber; // Modificar nombre si ya existe
           ws.send(JSON.stringify({
             type: 'error',
             message: `⚠️ Nombre de usuario ya en uso. Te hemos asignado el nombre: ${username}`
@@ -37,15 +36,15 @@ wss.on('connection', (ws) => {
           username = data.username;
         }
 
-        // Guardamos el usuario con su id único
+        // Guardar el usuario con su ID y WebSocket
         users.set(userId, { username: username, ws: ws });
 
-        // Mandamos la lista de usuarios activos
+        // Enviar a todos los clientes la lista actualizada de usuarios activos
         broadcastUsers();
         break;
 
       case 'message':
-        // Procesamos los enlaces en los mensajes
+        // Procesar el mensaje con enlaces
         const messageWithLinks = data.text.replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank">$1</a>');
         
         const messageData = {
@@ -57,14 +56,13 @@ wss.on('connection', (ws) => {
 
         messages.push(messageData);
         if (messages.length > 100) messages.shift(); // Mantener solo los últimos 100 mensajes
-        broadcast(JSON.stringify([messageData]));
+        broadcast(JSON.stringify([messageData])); // Enviar a todos los usuarios
         break;
 
       case 'privateMessage':
         // Enviar un mensaje privado a un usuario específico
-        const recipient = data.recipient;
-        const recipientUser = Array.from(users.values()).find(user => user.username === recipient);
-        
+        const recipientUser = Array.from(users.values()).find(user => user.username === data.recipient);
+
         if (recipientUser) {
           const privateMessage = {
             user: username,
@@ -76,7 +74,7 @@ wss.on('connection', (ws) => {
         } else {
           ws.send(JSON.stringify({
             type: 'error',
-            message: `⚠️ El usuario ${recipient} no está disponible.`
+            message: `⚠️ El usuario ${data.recipient} no está disponible.`
           }));
         }
         break;
@@ -96,14 +94,15 @@ wss.on('connection', (ws) => {
     }
   });
 
+  // Cuando un cliente se desconecta
   ws.on('close', () => {
-    users.delete(userId);
-    broadcastUsers(); // Actualizamos la lista de usuarios activos
+    users.delete(userId); // Eliminar al usuario desconectado
+    broadcastUsers(); // Actualizar lista de usuarios activos
   });
 });
 
+// Enviar a todos los clientes la lista actualizada de usuarios activos
 function broadcastUsers() {
-  // Enviar a todos los clientes la lista actualizada de usuarios
   const userList = Array.from(users.values()).map(u => u.username);
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -115,8 +114,8 @@ function broadcastUsers() {
   });
 }
 
+// Enviar un mensaje a todos los clientes
 function broadcast(data) {
-  // Enviar un mensaje a todos los clientes
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(data);
