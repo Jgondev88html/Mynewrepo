@@ -70,7 +70,9 @@ wss.on('connection', (ws) => {
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             type: 'privateMessage'
           };
-          recipientUser.ws.send(JSON.stringify([privateMessage])); // Enviar al usuario receptor
+
+          // Enviar solo al destinatario
+          recipientUser.ws.send(JSON.stringify([privateMessage])); 
         } else {
           ws.send(JSON.stringify({
             type: 'error',
