@@ -1,182 +1,128 @@
 const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
+const http = require('http');
+const path = require('path');
 
-// Crear aplicación Express
 const app = express();
-
-// Crear servidor HTTP con Express
 const server = http.createServer(app);
-
-// Crear servidor WebSocket que usa el servidor HTTP
 const wss = new WebSocket.Server({ server });
 
 let messages = [];
+let users = new Map();
 
-// Manejar la conexión WebSocket
+app.use(express.static(path.join(__dirname, 'public')));
+
 wss.on('connection', (ws) => {
-    console.log('Nuevo cliente conectado');
+  let userId = Date.now();
+  let username = '';
 
-    // Enviar los mensajes guardados al cliente
-    ws.send(JSON.stringify(messages));
+  ws.on('message', (message) => {
+    const data = JSON.parse(message);
 
-    // Recibir mensajes de los clientes y distribuirlos
-    ws.on('message', (message) => {
-        const newMessage = JSON.parse(message);
-        console.log('Mensaje recibido:', newMessage);
+    switch(data.type) {
+      case 'login':
+        // Verifica si el nombre de usuario ya existe
+        const usernameExists = Array.from(users.values())
+          .some(user => user.username.toLowerCase() === data.username.toLowerCase());
 
-        // Guardar el mensaje y enviarlo a todos los clientes conectados
-        messages.push(newMessage);
-        wss.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify([newMessage]));
-            }
+        if (usernameExists) {
+          // Si el nombre de usuario existe, agrega un número aleatorio
+          const randomNumber = Math.floor(Math.random() * 1000);
+          username = data.username + randomNumber;
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: `⚠️ Nombre de usuario ya en uso. Te hemos asignado el nombre: ${username}`
+          }));
+        } else {
+          username = data.username;
+        }
+
+        users.set(userId, {
+          username: username,
+          ws: ws
         });
-    });
+        broadcastUsers();
+        break;
 
-    // Manejar desconexión de clientes
-    ws.on('close', () => {
-        console.log('Cliente desconectado');
-    });
+      case 'message':
+        // Procesamos los enlaces en los mensajes
+        const messageWithLinks = data.text.replace(/(\b(https?|ftp|file):\/\/[-A-Z0-9+&@#\/%?=~_|!:,.;]*[-A-Z0-9+&@#\/%=~_|])/ig, '<a href="$1" target="_blank">$1</a>');
 
-    // Manejar errores de WebSocket
-    ws.on('error', (error) => {
-        console.error('Error en WebSocket:', error);
-    });
+        const messageData = {
+          user: username,
+          text: messageWithLinks,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          type: 'message'
+        };
+
+        messages.push(messageData);
+        if (messages.length > 100) messages.shift();
+        broadcast(JSON.stringify([messageData]));
+        break;
+
+      case 'privateMessage':
+        // Enviar un mensaje privado a un usuario específico
+        const recipient = data.recipient;
+        const recipientUser = Array.from(users.values()).find(user => user.username === recipient);
+
+        if (recipientUser) {
+          const privateMessage = {
+            user: username,
+            text: data.text,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            type: 'privateMessage'
+          };
+          recipientUser.ws.send(JSON.stringify([privateMessage])); // Enviar al usuario receptor
+        } else {
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: `⚠️ El usuario ${recipient} no está disponible.`
+          }));
+        }
+        break;
+
+      case 'clear':
+        messages = [];
+        broadcast(JSON.stringify({ type: 'clear' }));
+        break;
+
+      case 'getUsers':
+        ws.send(JSON.stringify({
+          type: 'activeUsers',
+          users: Array.from(users.values()).map(u => u.username)
+        }));
+        break;
+    }
+  });
+
+  ws.on('close', () => {
+    users.delete(userId);
+    broadcastUsers();
+  });
 });
 
-// Servir el archivo HTML directamente
-app.get('/', (req, res) => {
-    res.send(`
-        <!DOCTYPE html>
-        <html lang="es">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>ChatSphere</title>
-            <style>
-                /* Estilos básicos */
-                body {
-                    font-family: Arial, sans-serif;
-                    background: #f0f2f5;
-                    margin: 0;
-                }
-                /* Agregar más estilos aquí */
-            </style>
-        </head>
-        <body>
-            <!-- Contenedor de inicio de sesión -->
-            <div id="login-container">
-                <form id="login-form">
-                    <input type="text" id="username" placeholder="Nombre de usuario" required>
-                    <button type="submit">Ingresar</button>
-                </form>
-            </div>
+function broadcastUsers() {
+  // Enviar a todos los clientes la lista actualizada de usuarios
+  const userList = Array.from(users.values()).map(u => u.username);
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({
+        type: 'activeUsers',
+        users: userList
+      }));
+    }
+  });
+}
 
-            <!-- Contenedor de chat -->
-            <div id="chat-container" style="display:none;">
-                <div id="chat-header">
-                    <h1>ChatSphere</h1>
-                    <button onclick="clearChat()">🗑️</button>
-                </div>
-                <div id="messages"></div>
-                <div id="message-input">
-                    <input type="text" id="message-text" placeholder="Escribe un mensaje...">
-                    <button onclick="sendMessage()">Enviar</button>
-                </div>
-            </div>
+function broadcast(data) {
+  // Enviar un mensaje a todos los clientes
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  });
+}
 
-            <script>
-                // Configuración de WebSocket
-                const socket = new WebSocket('ws://localhost:3000');
-
-                socket.onopen = () => {
-                    console.log('Conectado al servidor WebSocket');
-                };
-
-                socket.onmessage = (event) => {
-                    const messages = JSON.parse(event.data);
-                    saveMessages(messages);
-                    messages.forEach(appendMessage);
-                };
-
-                // Función de login
-                document.getElementById('login-form').addEventListener('submit', function(e) {
-                    e.preventDefault();
-                    const username = document.getElementById('username').value;
-                    if (username) {
-                        localStorage.setItem('username', username);
-                        document.getElementById('login-container').style.display = 'none';
-                        document.getElementById('chat-container').style.display = 'block';
-                        loadMessages();
-                    } else {
-                        alert('Por favor ingresa un nombre de usuario');
-                    }
-                });
-
-                // Función para enviar mensajes
-                function sendMessage() {
-                    const messageInput = document.getElementById('message-text');
-                    const message = messageInput.value.trim();
-                    if (message) {
-                        const newMessage = {
-                            username: localStorage.getItem('username'),
-                            text: message,
-                            timestamp: new Date().toLocaleTimeString(),
-                        };
-                        socket.send(JSON.stringify(newMessage));
-                        messageInput.value = '';
-                    }
-                }
-
-                // Función para mostrar mensajes en el chat
-                function appendMessage(message) {
-                    const messagesContainer = document.getElementById('messages');
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = 'message';
-                    messageDiv.innerHTML = `
-                        <strong>${message.username}</strong>
-                        <p>${message.text}</p>
-                        <span>${message.timestamp}</span>
-                    `;
-                    messagesContainer.appendChild(messageDiv);
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                }
-
-                // Función para cargar mensajes del localStorage
-                function loadMessages() {
-                    const messages = JSON.parse(localStorage.getItem('chatMessages') || '[]');
-                    messages.forEach(appendMessage);
-                }
-
-                // Función para limpiar el chat
-                function clearChat() {
-                    const messagesContainer = document.getElementById('messages');
-                    messagesContainer.innerHTML = '';
-                    localStorage.setItem('chatMessages', JSON.stringify([]));
-                }
-
-                // Función para guardar mensajes en localStorage
-                function saveMessages(messages) {
-                    localStorage.setItem('chatMessages', JSON.stringify(messages));
-                }
-
-                // Al cargar la página, si ya hay un usuario registrado, mostrar el chat
-                window.addEventListener('DOMContentLoaded', () => {
-                    if (localStorage.getItem('username')) {
-                        document.getElementById('login-container').style.display = 'none';
-                        document.getElementById('chat-container').style.display = 'block';
-                        loadMessages();
-                    }
-                });
-            </script>
-        </body>
-        </html>
-    `);
-});
-
-// Iniciar servidor en el puerto 3000
 server.listen(3000, () => {
-    console.log('Servidor escuchando en http://localhost:3000');
+  console.log('🚀 Servidor corriendo en http://localhost:3000');
 });
-</script>
