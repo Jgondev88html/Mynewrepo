@@ -7,143 +7,65 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-let messages = [];
-let users = new Map();
-
-// Función para escapar HTML solo en texto normal
-function escapeHtml(text) {
-  return text.replace(/[&<>]/g, (m) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;'
-  }[m]));
-}
-
-// Validar protocolos permitidos en URLs
-function isValidProtocol(url) {
-  try {
-    const parsed = new URL(url);
-    return ['http:', 'https:', 'ftp:', 'file:'].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
+let connectedUsers = new Set();
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 wss.on('connection', (ws) => {
-  let userId = Date.now();
-  let username = '';
+    let currentUser = null;
 
-  ws.on('message', (message) => {
-    const data = JSON.parse(message);
-
-    switch (data.type) {
-      case 'login':
-        const usernameExists = Array.from(users.values())
-          .some(user => user.username.toLowerCase() === data.username.toLowerCase());
-
-        if (usernameExists) {
-          const randomNumber = Math.floor(Math.random() * 1000);
-          username = data.username + randomNumber;
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: `⚠️ Nombre de usuario ya en uso. Te hemos asignado: ${escapeHtml(username)}`
-          }));
-        } else {
-          username = data.username;
-        }
-
-        users.set(userId, { username: username, ws: ws });
-        broadcastUsers();
-        break;
-
-      case 'message':
-        const urlRegex = /(\b(https?|ftp|file):\/\/\S+)/gi;
-        const parts = data.text.split(urlRegex);
-        let processedText = '';
+    ws.on('message', (data) => {
+        const message = JSON.parse(data);
         
-        for (let i = 0; i < parts.length; i++) {
-          if (i % 2 === 0 || !parts[i]) {
-            processedText += escapeHtml(parts[i]);
-          } else {
-            const originalUrl = parts[i];
-            if (isValidProtocol(originalUrl)) {
-              const encodedUrl = encodeURI(originalUrl);
-              processedText += `<a href="${encodedUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(originalUrl)}</a>`;
-            } else {
-              processedText += escapeHtml(originalUrl);
-            }
-          }
+        switch (message.type) {
+            case 'login':
+                currentUser = message.user;
+                connectedUsers.add(currentUser.id);
+                broadcastUserCount();
+                break;
+            
+            case 'globalMessage':
+                broadcastMessage(message);
+                break;
+            
+            case 'privateMessage':
+                handlePrivateMessage(message);
+                break;
         }
+    });
 
-        const messageData = {
-          user: escapeHtml(username),
-          text: processedText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          type: 'message'
-        };
-
-        messages.push(messageData);
-        if (messages.length > 100) messages.shift();
-        broadcast(JSON.stringify([messageData]));
-        break;
-
-      case 'privateMessage':
-        const recipientUser = Array.from(users.values()).find(user => 
-          escapeHtml(user.username) === data.recipient
-        );
-
-        if (recipientUser) {
-          const privateMessage = {
-            user: escapeHtml(username),
-            text: escapeHtml(data.text),
-            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            type: 'privateMessage'
-          };
-          recipientUser.ws.send(JSON.stringify([privateMessage]));
+    ws.on('close', () => {
+        if (currentUser) {
+            connectedUsers.delete(currentUser.id);
+            broadcastUserCount();
         }
-        break;
-
-      case 'clear':
-        ws.send(JSON.stringify({ type: 'clear' }));
-        break;
-
-      case 'getUsers':
-        ws.send(JSON.stringify({
-          type: 'activeUsers',
-          users: Array.from(users.values()).map(u => escapeHtml(u.username))
-        }));
-        break;
-    }
-  });
-
-  ws.on('close', () => {
-    users.delete(userId);
-    broadcastUsers();
-  });
+    });
 });
 
-function broadcastUsers() {
-  const userList = Array.from(users.values()).map(u => escapeHtml(u.username));
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({
-        type: 'activeUsers',
-        users: userList
-      }));
-    }
-  });
+function broadcastUserCount() {
+    const countMessage = JSON.stringify({
+        type: 'userCount',
+        count: connectedUsers.size
+    });
+    
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(countMessage);
+        }
+    });
 }
 
-function broadcast(data) {
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(data);
-    }
-  });
+function broadcastMessage(message) {
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                ...message,
+                timestamp: new Date().toISOString()
+            }));
+        }
+    });
 }
 
 server.listen(3000, () => {
-  console.log('🚀 Chat seguro con enlaces activos: http://localhost:3000');
+    console.log('Servidor iniciado en http://localhost:3000');
 });
