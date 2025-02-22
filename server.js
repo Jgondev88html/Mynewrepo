@@ -1,8 +1,9 @@
-// server.js
 const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 8080 });
-const clients = new Map(); // Almacenamos cada conexión y su información (nombre y avatar)
+const clients = new Map(); // Almacena las conexiones con su nombre y avatar
+let globalMessages = []; // Almacena mensajes globales
+const privateMessages = new Map(); // Almacena mensajes privados por usuario
 
 function broadcastParticipantsCount() {
   const count = Array.from(clients.values()).filter(client => client.name).length;
@@ -19,7 +20,6 @@ function broadcastParticipantsCount() {
 
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
-  // Inicialmente sin nombre (login pendiente)
   clients.set(ws, { name: null, avatar: '' });
   broadcastParticipantsCount();
 
@@ -31,18 +31,24 @@ wss.on('connection', (ws) => {
       console.error('JSON inválido', e);
       return;
     }
-    // Login: se envían nombre y avatar
+
     if (msg.type === 'login') {
       clients.set(ws, { name: msg.name, avatar: msg.avatar || '' });
       broadcastParticipantsCount();
     }
-    // Mensaje grupal: se reenvía a todos los clientes
-    else if (msg.type === 'group_message') {
+
+    const clientInfo = clients.get(ws);
+
+    if (msg.type === 'group_message') {
+      globalMessages.push(msg);
+      if (globalMessages.length > 70) {
+        globalMessages = globalMessages.slice(-70);
+      }
       const outgoing = JSON.stringify({
         type: 'group_message',
         id: msg.id,
-        sender: msg.sender,
-        avatar: msg.avatar || '',
+        sender: clientInfo.name,
+        avatar: clientInfo.avatar,
         content: msg.content,
         image: msg.image || null,
         timestamp: msg.timestamp,
@@ -54,16 +60,25 @@ wss.on('connection', (ws) => {
         }
       });
     }
-    // Mensaje privado: se envía al destinatario y se reenvía al emisor
-    else if (msg.type === 'private_message') {
+
+    if (msg.type === 'private_message') {
+      if (!privateMessages.has(msg.target)) {
+        privateMessages.set(msg.target, []);
+      }
+      const userMessages = privateMessages.get(msg.target);
+      userMessages.push(msg);
+      if (userMessages.length > 20) {
+        privateMessages.set(msg.target, userMessages.slice(-20));
+      }
+
       wss.clients.forEach(client => {
-        const clientInfo = clients.get(client);
-        if (client.readyState === WebSocket.OPEN && clientInfo.name === msg.target) {
+        const targetInfo = clients.get(client);
+        if (client.readyState === WebSocket.OPEN && targetInfo.name === msg.target) {
           client.send(JSON.stringify({
             type: 'private_message',
             id: msg.id,
-            sender: msg.sender,
-            avatar: msg.avatar || '',
+            sender: clientInfo.name,
+            avatar: clientInfo.avatar,
             target: msg.target,
             content: msg.content,
             timestamp: msg.timestamp,
@@ -71,11 +86,12 @@ wss.on('connection', (ws) => {
           }));
         }
       });
+
       ws.send(JSON.stringify({
         type: 'private_message',
         id: msg.id,
-        sender: msg.sender,
-        avatar: msg.avatar || '',
+        sender: clientInfo.name,
+        avatar: clientInfo.avatar,
         target: msg.target,
         content: msg.content,
         timestamp: msg.timestamp,
