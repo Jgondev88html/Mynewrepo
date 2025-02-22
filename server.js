@@ -1,9 +1,10 @@
 const WebSocket = require('ws');
 
 const wss = new WebSocket.Server({ port: 8080 });
-const clients = new Map(); // Almacena cada conexión y su información (nombre y avatar)
-const pendingMessages = new Map(); // Almacena mensajes privados no entregados
-const globalMessages = []; // Almacena los últimos 70 mensajes del chat global
+const clients = new Map(); // Almacenamos cada conexión y su información (nombre y avatar)
+const offlineMessages = new Map(); // Almacena mensajes para usuarios desconectados
+let globalMessages = []; // Lista de mensajes globales
+const MAX_GLOBAL_MESSAGES = 70;
 
 function broadcastParticipantsCount() {
   const count = Array.from(clients.values()).filter(client => client.name).length;
@@ -31,56 +32,74 @@ wss.on('connection', (ws) => {
       console.error('JSON inválido', e);
       return;
     }
-
+    
     if (msg.type === 'login') {
       clients.set(ws, { name: msg.name, avatar: msg.avatar || '' });
       
-      // Enviar mensajes pendientes al usuario
-      if (pendingMessages.has(msg.name)) {
-        pendingMessages.get(msg.name).forEach(pendingMsg => {
-          ws.send(JSON.stringify(pendingMsg));
-        });
-        pendingMessages.delete(msg.name);
+      // Enviar mensajes almacenados si los hay
+      if (offlineMessages.has(msg.name)) {
+        offlineMessages.get(msg.name).forEach(message => ws.send(message));
+        offlineMessages.delete(msg.name);
       }
       
       broadcastParticipantsCount();
     }
-    
+    // Mensaje grupal
     else if (msg.type === 'group_message') {
-      if (globalMessages.length >= 70) {
-        globalMessages.shift(); // Elimina el mensaje más antiguo
+      const outgoing = JSON.stringify({
+        type: 'group_message',
+        id: msg.id,
+        sender: msg.sender,
+        avatar: msg.avatar || '',
+        content: msg.content,
+        image: msg.image || null,
+        timestamp: msg.timestamp,
+        replyTo: msg.replyTo || null
+      });
+      
+      globalMessages.push(outgoing);
+      if (globalMessages.length > MAX_GLOBAL_MESSAGES) {
+        globalMessages.shift(); // Eliminar el mensaje más antiguo
       }
-      globalMessages.push(msg);
-
-      const outgoing = JSON.stringify(msg);
+      
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
           client.send(outgoing);
         }
       });
     }
-    
+    // Mensaje privado
     else if (msg.type === 'private_message') {
-      let delivered = false;
-
+      const outgoing = JSON.stringify({
+        type: 'private_message',
+        id: msg.id,
+        sender: msg.sender,
+        avatar: msg.avatar || '',
+        target: msg.target,
+        content: msg.content,
+        timestamp: msg.timestamp,
+        replyTo: msg.replyTo || null
+      });
+      
+      let sent = false;
       wss.clients.forEach(client => {
         const clientInfo = clients.get(client);
         if (client.readyState === WebSocket.OPEN && clientInfo.name === msg.target) {
-          client.send(JSON.stringify(msg));
-          delivered = true;
+          client.send(outgoing);
+          sent = true;
         }
       });
-
-      // Guardar en mensajes pendientes si no se entregó
-      if (!delivered) {
-        if (!pendingMessages.has(msg.target)) {
-          pendingMessages.set(msg.target, []);
+      
+      // Si el destinatario no está en línea, almacenar el mensaje
+      if (!sent) {
+        if (!offlineMessages.has(msg.target)) {
+          offlineMessages.set(msg.target, []);
         }
-        pendingMessages.get(msg.target).push(msg);
+        offlineMessages.get(msg.target).push(outgoing);
       }
       
-      // También reenviar el mensaje al remitente para que se almacene en su chat
-      ws.send(JSON.stringify(msg));
+      // También guardar el mensaje en el almacenamiento del remitente
+      ws.send(outgoing);
     }
   });
 
