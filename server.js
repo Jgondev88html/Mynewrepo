@@ -5,7 +5,6 @@ const wss = new WebSocket.Server({ port: 8080 });
 const clients = new Map(); // Almacenamos cada conexión y su información (nombre y avatar)
 
 function broadcastParticipantsCount() {
-  // Se cuentan sólo los usuarios que hayan hecho login (tienen nombre)
   const count = Array.from(clients.values()).filter(client => client.name).length;
   const message = JSON.stringify({
     type: 'update_participants',
@@ -20,7 +19,7 @@ function broadcastParticipantsCount() {
 
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
-  // Inicialmente el cliente no tiene nombre (login pendiente)
+  // Inicialmente sin nombre (login pendiente)
   clients.set(ws, { name: null, avatar: '' });
   broadcastParticipantsCount();
 
@@ -32,15 +31,16 @@ wss.on('connection', (ws) => {
       console.error('JSON inválido', e);
       return;
     }
-    // Al hacer login se envía el nombre y la foto de avatar
+    // Al hacer login se envían nombre y avatar
     if (msg.type === 'login') {
       clients.set(ws, { name: msg.name, avatar: msg.avatar || '' });
       broadcastParticipantsCount();
     }
-    // Mensaje grupal: se reenvía a todos los clientes conectados
+    // Mensaje grupal: se reenvía a todos los clientes
     else if (msg.type === 'group_message') {
       const outgoing = JSON.stringify({
         type: 'group_message',
+        id: msg.id,
         sender: msg.sender,
         avatar: msg.avatar || '',
         content: msg.content,
@@ -54,13 +54,14 @@ wss.on('connection', (ws) => {
         }
       });
     }
-    // Mensaje privado: se envía solo al destinatario y se devuelve al emisor
+    // Mensaje privado: se envía al destinatario y se reenvía al emisor
     else if (msg.type === 'private_message') {
       wss.clients.forEach(client => {
         const clientInfo = clients.get(client);
         if (client.readyState === WebSocket.OPEN && clientInfo.name === msg.target) {
           client.send(JSON.stringify({
             type: 'private_message',
+            id: msg.id,
             sender: msg.sender,
             avatar: msg.avatar || '',
             target: msg.target,
@@ -70,9 +71,9 @@ wss.on('connection', (ws) => {
           }));
         }
       });
-      // Se envía también de vuelta al remitente para su visualización
       ws.send(JSON.stringify({
         type: 'private_message',
+        id: msg.id,
         sender: msg.sender,
         avatar: msg.avatar || '',
         target: msg.target,
