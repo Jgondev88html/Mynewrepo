@@ -44,7 +44,8 @@ wss.on('connection', (ws) => {
         sender: msg.sender,
         content: msg.content,
         image: msg.image || null,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
+        replyTo: msg.replyTo || null
       });
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
@@ -62,7 +63,8 @@ wss.on('connection', (ws) => {
             sender: msg.sender,
             target: msg.target,
             content: msg.content,
-            timestamp: msg.timestamp
+            timestamp: msg.timestamp,
+            replyTo: msg.replyTo || null
           }));
         }
       });
@@ -72,7 +74,8 @@ wss.on('connection', (ws) => {
         sender: msg.sender,
         target: msg.target,
         content: msg.content,
-        timestamp: msg.timestamp
+        timestamp: msg.timestamp,
+        replyTo: msg.replyTo || null
       }));
     }
   });
