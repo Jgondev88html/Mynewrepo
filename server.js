@@ -38,26 +38,27 @@ wss.on('connection', (ws) => {
     }
 
     // Mensaje grupal: se reenvía a todos los clientes
-    else if (msg.type === 'group_message') {
-      const avatar = msg.avatar || '👤'; // Avatar predeterminado si no hay avatar
+   else if (msg.type === 'group_message') {
+  // Para el chat grupal, no enviamos el avatar o enviamos un avatar genérico
+  const avatar = ''; // Puedes dejarlo vacío o usar un valor predeterminado
 
-      const outgoing = JSON.stringify({
-        type: 'group_message',
-        id: msg.id,
-        sender: msg.sender,
-        avatar: avatar,  // Avatar predeterminado si no hay avatar
-        content: msg.content,
-        image: msg.image || null,
-        timestamp: msg.timestamp,
-        replyTo: msg.replyTo || null
-      });
+  const outgoing = JSON.stringify({
+    type: 'group_message',
+    id: msg.id,
+    sender: msg.sender,
+    avatar: avatar,  // Avatar vacío o genérico para el chat global
+    content: msg.content,
+    image: msg.image || null,
+    timestamp: msg.timestamp,
+    replyTo: msg.replyTo || null
+  });
 
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(outgoing);
-        }
-      });
+  wss.clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(outgoing);
     }
+  });
+}
 
     // Mensaje privado: se guarda y se envía al destinatario
     else if (msg.type === 'private_message') {
