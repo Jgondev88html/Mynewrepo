@@ -39,16 +39,19 @@ wss.on('connection', (ws) => {
     }
     // Mensaje grupal: se reenvía a todos los clientes
     else if (msg.type === 'group_message') {
+      const avatar = msg.avatar || '👤'; // Avatar predeterminado (signo de usuario)
+      
       const outgoing = JSON.stringify({
         type: 'group_message',
         id: msg.id,
         sender: msg.sender,
-        avatar: msg.avatar || '',  // Enviar solo el avatar del remitente
+        avatar: avatar,  // Se envía el avatar predeterminado si no hay avatar
         content: msg.content,
         image: msg.image || null,
         timestamp: msg.timestamp,
         replyTo: msg.replyTo || null
       });
+
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
           client.send(outgoing);
