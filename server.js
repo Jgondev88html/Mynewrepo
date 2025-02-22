@@ -31,7 +31,7 @@ wss.on('connection', (ws) => {
       console.error('JSON inválido', e);
       return;
     }
-    // Al hacer login se envían nombre y avatar
+    // Login: se envían nombre y avatar
     if (msg.type === 'login') {
       clients.set(ws, { name: msg.name, avatar: msg.avatar || '' });
       broadcastParticipantsCount();
