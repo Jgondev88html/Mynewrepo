@@ -1,71 +1,104 @@
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
-const dotenv = require('dotenv');
-dotenv.config(); // Cargar variables del archivo .env
+const path = require('path');
+const { LocalStorage } = require('node-localstorage');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+const localStorage = new LocalStorage('./scratch');  // Simulamos el localStorage en el servidor
 
-let users = {};  // Para almacenar el estado de los usuarios (berkas, etc.)
-let adminLoggedIn = false;  // Variable para verificar si el admin ha iniciado sesión
+const ADMIN_PASSWORD = "123";  // Contraseña del administrador para recargar Berk
 
-// Middleware para servir las páginas estáticas
-app.use(express.static('public'));
+// Servir archivos estáticos (frontend)
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Ruta para el juego
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
-});
-
-// Ruta para la administración (con protección de login)
-app.get('/admin', (req, res) => {
-    if (adminLoggedIn) {
-        res.sendFile(__dirname + '/public/admin.html');
-    } else {
-        res.send('Acceso denegado. Inicia sesión como administrador.');
-    }
-});
-
-// Conexión WebSocket para gestionar el juego y la administración
+// WebSocket: Manejo de la comunicación
 wss.on('connection', (ws) => {
-    console.log('Nuevo cliente conectado');
+    console.log('Cliente conectado');
 
-    // Recibir mensajes desde el frontend
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
+            console.log('Mensaje recibido:', data);
 
-            if (data.type === 'register') {
-                // Registrar un nuevo usuario
-                if (users[data.username]) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Nombre de usuario ya existe.' }));
+            // Verificar tipo de mensaje
+            if (data.type === 'register_user') {
+                const users = JSON.parse(localStorage.getItem('users') || '{}');
+                console.log('Usuarios almacenados en localStorage:', users);  // Depuración
+                if (!users[data.username]) {
+                    users[data.username] = {
+                        berkas: 0,
+                        multiplier: 1,
+                        autoClickers: 0
+                    };
+                    localStorage.setItem('users', JSON.stringify(users));
+                    ws.send(JSON.stringify({
+                        type: 'success',
+                        message: 'Usuario registrado correctamente'
+                    }));
                 } else {
-                    users[data.username] = { berkas: 0, multiplier: 1, autoClickers: 0 };
-                    ws.send(JSON.stringify({ type: 'success', message: 'Usuario registrado exitosamente.' }));
-                }
-            } else if (data.type === 'click') {
-                // Procesar un click del usuario
-                if (users[data.username]) {
-                    users[data.username].berkas += users[data.username].multiplier;
-                    ws.send(JSON.stringify({ type: 'update', berkas: users[data.username].berkas }));
-                } else {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Usuario no encontrado.' }));
-                }
-            } else if (data.type === 'accredit' && adminLoggedIn) {
-                // Acreditar Berkas a un usuario
-                if (users[data.username]) {
-                    users[data.username].berkas += data.amount;
-                    // Enviar confirmación al administrador
-                    ws.send(JSON.stringify({ type: 'accredit', username: data.username, amount: data.amount }));
-                } else {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Usuario no encontrado.' }));
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'El usuario ya existe'
+                    }));
                 }
             }
+
+            // Recarga de Berk por parte del administrador
+            if (data.type === 'admin_recharge') {
+                // Verificar contraseña del administrador
+                if (data.password !== ADMIN_PASSWORD) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Contraseña de administrador incorrecta'
+                    }));
+                    return;
+                }
+
+                // Buscar usuario y recargar Berk
+                const users = JSON.parse(localStorage.getItem('users') || '{}');
+                console.log('Usuarios en el servidor:', users);  // Depuración
+                if (!users[data.username]) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Usuario no encontrado'
+                    }));
+                    return;
+                }
+
+                // Recargar Berk
+                users[data.username].berkas += parseInt(data.amount);
+                localStorage.setItem('users', JSON.stringify(users));
+
+                console.log(`Recarga exitosa: ${data.amount} Berk a ${data.username}`);
+
+                // Enviar la actualización de Berk a todos los clientes conectados
+                wss.clients.forEach(client => {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({
+                            type: 'update_berkas',
+                            username: data.username,
+                            berkas: users[data.username].berkas
+                        }));
+                    }
+                });
+
+                // Responder al administrador que la recarga fue exitosa
+                ws.send(JSON.stringify({
+                    type: 'success',
+                    message: `Recarga exitosa: ${data.amount} Berk a ${data.username}`,
+                    berkas: users[data.username].berkas,
+                    username: data.username
+                }));
+            }
         } catch (error) {
-            console.error(error);
-            ws.send(JSON.stringify({ type: 'error', message: 'Error procesando mensaje.' }));
+            console.error('Error procesando mensaje:', error);
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Error en el servidor'
+            }));
         }
     });
 
@@ -74,21 +107,12 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Ruta para iniciar sesión como administrador
-app.post('/admin-login', express.json(), (req, res) => {
-    const { password } = req.body;
-    if (password === process.env.ADMIN_PASSWORD) {
-        adminLoggedIn = true;
-        res.send({ message: 'Administrador autenticado' });
-    } else {
-        res.status(401).send({ message: 'Contraseña incorrecta' });
-    }
+// Servir el contenido del juego
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Usar el puerto proporcionado por Render o el puerto 3000 para desarrollo local
-const PORT = process.env.PORT || 3000;
-
-// Iniciar el servidor en el puerto
-server.listen(PORT, () => {
-    console.log(`Servidor iniciado en el puerto ${PORT}`);
+// Iniciar el servidor
+server.listen(3000, () => {
+    console.log('Servidor escuchando en http://localhost:3000');
 });
