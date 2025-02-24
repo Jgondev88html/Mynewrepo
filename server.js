@@ -108,7 +108,20 @@ wss.on('connection', (ws) => {
 });
 
 // Función para la pérdida aleatoria de Berk cada 5 minutos
+let lossTimeLimit = 300000;  // Límite de tiempo de 5 minutos (en milisegundos)
+let startLossTime = Date.now();  // Registrar el tiempo de inicio de la pérdida
+
+// Función para la pérdida aleatoria de Berk
 function startRandomLoss() {
+    // Obtener el tiempo actual
+    const currentTime = Date.now();
+    
+    // Verificar si el límite de tiempo ha pasado (5 minutos)
+    if (currentTime - startLossTime >= lossTimeLimit) {
+        console.log("Límite de tiempo alcanzado. La pérdida de Berk se detiene.");
+        return;  // Detener la pérdida una vez que se alcance el tiempo
+    }
+
     // Obtener los usuarios almacenados
     const users = JSON.parse(localStorage.getItem('users') || '{}');
     
@@ -143,8 +156,8 @@ function startRandomLoss() {
     }
 }
 
-// Iniciar la pérdida aleatoria cada 5 minutos (300000 ms)
-setInterval(startRandomLoss, 9000);
+// Iniciar la pérdida aleatoria cada 1 minuto (60000 ms)
+setInterval(startRandomLoss, 60000);  // Cambié el tiempo a 60000 ms (1 minuto)
 
 // Servir el contenido del juego
 app.get('/', (req, res) => {
