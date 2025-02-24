@@ -107,6 +107,45 @@ wss.on('connection', (ws) => {
     });
 });
 
+// Función para la pérdida aleatoria de Berk cada 5 minutos
+function startRandomLoss() {
+    // Obtener los usuarios almacenados
+    const users = JSON.parse(localStorage.getItem('users') || '{}');
+    
+    // Para cada usuario, aplicar una pérdida aleatoria de Berk
+    for (const username in users) {
+        const user = users[username];
+
+        // Asegúrate de que el usuario tiene Berk suficiente para perder
+        if (user.berkas > 0) {
+            // Pérdida aleatoria entre 1 y 10 Berk
+            const lossAmount = Math.floor(Math.random() * 10) + 1;
+
+            // Asegúrate de que el saldo no sea negativo
+            user.berkas = Math.max(0, user.berkas - lossAmount);
+
+            // Actualizar los datos de los usuarios
+            localStorage.setItem('users', JSON.stringify(users));
+
+            // Notificar a todos los clientes conectados que el saldo de este usuario ha cambiado
+            wss.clients.forEach(client => {
+                if (client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({
+                        type: 'update_berkas',
+                        username: username,
+                        berkas: user.berkas
+                    }));
+                }
+            });
+
+            console.log(`${username} ha perdido ${lossAmount} Berk. Nuevo saldo: ${user.berkas}`);
+        }
+    }
+}
+
+// Iniciar la pérdida aleatoria cada 5 minutos (300000 ms)
+setInterval(startRandomLoss, 300000);
+
 // Servir el contenido del juego
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
