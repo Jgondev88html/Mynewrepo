@@ -9,7 +9,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const localStorage = new LocalStorage('./scratch');  // Simulamos el localStorage en el servidor
 
-const ADMIN_PASSWORD = "123";  // Contraseña del administrador para recargar Berk
+const ADMIN_PASSWORD = "whoamiroot";  // Contraseña del administrador para recargar Berk
 
 // Servir archivos estáticos (frontend)
 app.use(express.static(path.join(__dirname, 'public')));
