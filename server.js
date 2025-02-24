@@ -7,14 +7,11 @@ const { LocalStorage } = require('node-localstorage');
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-const localStorage = new LocalStorage('./scratch');  // Simulamos el localStorage en el servidor
+const localStorage = new LocalStorage('./scratch');
+const ADMIN_PASSWORD = "whoamiroot";
 
-const ADMIN_PASSWORD = "whoamiroot";  // Contraseña del administrador para recargar Berk
-
-// Servir archivos estáticos (frontend)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// WebSocket: Manejo de la comunicación
 wss.on('connection', (ws) => {
     console.log('Cliente conectado');
 
@@ -23,58 +20,71 @@ wss.on('connection', (ws) => {
             const data = JSON.parse(message);
             console.log('Mensaje recibido:', data);
 
-            // Verificar tipo de mensaje
+            // Registro de usuarios mejorado
             if (data.type === 'register_user') {
+                const username = data.username.trim();
                 const users = JSON.parse(localStorage.getItem('users') || '{}');
-                console.log('Usuarios almacenados en localStorage:', users);  // Depuración
-                if (!users[data.username]) {
-                    users[data.username] = {
-                        berkas: 0,
-                        multiplier: 1,
-                        autoClickers: 0
-                    };
-                    localStorage.setItem('users', JSON.stringify(users));
-                    ws.send(JSON.stringify({
-                        type: 'success',
-                        message: 'Usuario registrado correctamente'
-                    }));
-                } else {
+
+                if (!username) {
                     ws.send(JSON.stringify({
                         type: 'error',
-                        message: 'El usuario ya existe'
+                        message: '❌ El nombre no puede estar vacío'
                     }));
+                    return;
                 }
+
+                if (users[username]) {
+                    console.log(`Intento de registro fallido: ${username} ya existe`);
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: `❌ ${username} ya está registrado. Usa otro nombre.`
+                    }));
+                    return;
+                }
+
+                // Crear nuevo usuario
+                users[username] = {
+                    berkas: 0,
+                    multiplier: 1,
+                    autoClickers: 0,
+                    registrationDate: new Date().toISOString(),
+                    lastLogin: new Date().toISOString()
+                };
+
+                localStorage.setItem('users', JSON.stringify(users));
+                console.log(`✅ Nuevo usuario: ${username}`);
+
+                ws.send(JSON.stringify({
+                    type: 'success',
+                    message: `¡Bienvenido ${username}!`,
+                    username: username
+                }));
             }
 
-            // Recarga de Berk por parte del administrador
+            // Recarga administrativa
             if (data.type === 'admin_recharge') {
-                // Verificar contraseña del administrador
                 if (data.password !== ADMIN_PASSWORD) {
                     ws.send(JSON.stringify({
                         type: 'error',
-                        message: 'Contraseña de administrador incorrecta'
+                        message: '🔒 Contraseña incorrecta'
                     }));
                     return;
                 }
 
-                // Buscar usuario y recargar Berk
-                const users = JSON.parse(localStorage.getItem('users') || '{}');
-                console.log('Usuarios en el servidor:', users);  // Depuración
+                const users = JSON.parse(localStorage.getItem('users') || {});
                 if (!users[data.username]) {
                     ws.send(JSON.stringify({
                         type: 'error',
-                        message: 'Usuario no encontrado'
+                        message: '❌ Usuario no encontrado'
                     }));
                     return;
                 }
 
-                // Recargar Berk
-                users[data.username].berkas += parseInt(data.amount);
+                const amount = parseInt(data.amount);
+                users[data.username].berkas += amount;
                 localStorage.setItem('users', JSON.stringify(users));
 
-                console.log(`Recarga exitosa: ${data.amount} Berk a ${data.username}`);
-
-                // Enviar la actualización de Berk a todos los clientes conectados
+                // Notificar a todos los clientes
                 wss.clients.forEach(client => {
                     if (client.readyState === WebSocket.OPEN) {
                         client.send(JSON.stringify({
@@ -85,19 +95,17 @@ wss.on('connection', (ws) => {
                     }
                 });
 
-                // Responder al administrador que la recarga fue exitosa
                 ws.send(JSON.stringify({
                     type: 'success',
-                    message: `Recarga exitosa: ${data.amount} Berk a ${data.username}`,
-                    berkas: users[data.username].berkas,
-                    username: data.username
+                    message: `✅ Recargados ${amount} Berk a ${data.username}`,
+                    berkas: users[data.username].berkas
                 }));
             }
         } catch (error) {
-            console.error('Error procesando mensaje:', error);
+            console.error('Error:', error);
             ws.send(JSON.stringify({
                 type: 'error',
-                message: 'Error en el servidor'
+                message: '⚠️ Error en el servidor'
             }));
         }
     });
@@ -107,64 +115,29 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Función para la pérdida aleatoria de Berk cada 5 minutos
-let lossTimeLimit = 300000;  // Límite de tiempo de 5 minutos (en milisegundos)
-let startLossTime = Date.now();  // Registrar el tiempo de inicio de la pérdida
-
-// Función para la pérdida aleatoria de Berk
-function startRandomLoss() {
-    // Obtener el tiempo actual
-    const currentTime = Date.now();
+// Sistema de pérdida de Berk
+function aplicarPerdidaAleatoria() {
+    const users = JSON.parse(localStorage.getItem('users') || {});
     
-    // Verificar si el límite de tiempo ha pasado (5 minutos)
-    if (currentTime - startLossTime >= lossTimeLimit) {
-        console.log("Límite de tiempo alcanzado. La pérdida de Berk se detiene.");
-        return;  // Detener la pérdida una vez que se alcance el tiempo
-    }
-
-    // Obtener los usuarios almacenados
-    const users = JSON.parse(localStorage.getItem('users') || '{}');
-    
-    // Para cada usuario, aplicar una pérdida aleatoria de Berk
-    for (const username in users) {
-        const user = users[username];
-
-        // Asegúrate de que el usuario tiene Berk suficiente para perder
+    Object.entries(users).forEach(([username, user]) => {
         if (user.berkas > 0) {
-            // Pérdida aleatoria entre 1 y 10 Berk
-            const lossAmount = Math.floor(Math.random() * 10) + 1;
-
-            // Asegúrate de que el saldo no sea negativo
-            user.berkas = Math.max(0, user.berkas - lossAmount);
-
-            // Actualizar los datos de los usuarios
-            localStorage.setItem('users', JSON.stringify(users));
-
-            // Notificar a todos los clientes conectados que el saldo de este usuario ha cambiado
-            wss.clients.forEach(client => {
-                if (client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify({
-                        type: 'update_berkas',
-                        username: username,
-                        berkas: user.berkas
-                    }));
-                }
-            });
-
-            console.log(`${username} ha perdido ${lossAmount} Berk. Nuevo saldo: ${user.berkas}`);
+            const perdida = Math.floor(Math.random() * 10) + 1;
+            user.berkas = Math.max(0, user.berkas - perdida);
+            console.log(`📉 ${username} perdió ${perdida} Berk`);
         }
-    }
+    });
+    
+    localStorage.setItem('users', JSON.stringify(users));
 }
 
-// Iniciar la pérdida aleatoria cada 1 minuto (60000 ms)
-setInterval(startRandomLoss, 60000);  // Cambié el tiempo a 60000 ms (1 minuto)
+setInterval(aplicarPerdidaAleatoria, 300000); // Cada 5 minutos
 
-// Servir el contenido del juego
+// Configuración del servidor
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Iniciar el servidor
 server.listen(3000, () => {
-    console.log('Servidor escuchando en http://localhost:3000');
+    console.log('🚀 Servidor activo en puerto 3000');
+    console.log('🔑 Contraseña admin:', ADMIN_PASSWORD);
 });
