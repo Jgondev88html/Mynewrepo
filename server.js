@@ -144,7 +144,7 @@ function startRandomLoss() {
 }
 
 // Iniciar la pérdida aleatoria cada 5 minutos (300000 ms)
-setInterval(startRandomLoss, 300000);
+setInterval(startRandomLoss, 9000);
 
 // Servir el contenido del juego
 app.get('/', (req, res) => {
