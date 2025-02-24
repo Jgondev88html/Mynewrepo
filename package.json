@@ -1,17 +1,19 @@
 {
-  "name": "chat",
+  "name": "berka-clicker",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Juego Berka Clicker con administración",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
-    "express": "^4.21.2",
-    "http": "^0.0.1-security",
-    "ws": "^8.18.0"
-  }
+    "express": "^4.17.1",
+    "ws": "^8.3.0",
+    "dotenv": "^10.0.0"
+  },
+  "engines": {
+    "node": "16.x"
+  },
+  "author": "Tu Nombre",
+  "license": "ISC"
 }
