@@ -2,7 +2,7 @@ const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
 const path = require('path');
-const fs = require('fs'); // Para manipular el sistema de archivos
+const fs = require('fs');
 const { LocalStorage } = require('node-localstorage');
 
 const app = express();
@@ -34,6 +34,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 wss.on('connection', (ws) => {
     console.log('Cliente conectado');
 
+    // Manejo de mensajes
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
@@ -129,24 +130,21 @@ wss.on('connection', (ws) => {
         }
     });
 
-    // Ruta para borrar todos los datos en el servidor
-    app.post('/clear-server-data', (req, res) => {
-        try {
-            console.log("Borrando datos del servidor...");
-            localStorage.clear();  // Elimina todo el localStorage del servidor
-            res.json({ success: true, message: '¡Datos del servidor eliminados!' });
-        } catch (err) {
-            console.error("Error al borrar datos del servidor:", err);
-            res.status(500).json({ success: false, message: 'Error al borrar los datos del servidor' });
-        }
-    });
-
     ws.on('close', () => {
         console.log('Cliente desconectado');
+        reconnect(ws); // Intentar reconectar automáticamente
     });
+
+    // Intentar reconectar automáticamente
+    function reconnect(ws) {
+        setTimeout(() => {
+            console.log('Intentando reconectar...');
+            ws = new WebSocket(ws.url); // Reestablecer la conexión WebSocket
+        }, 5000); // Intentar reconectar después de 5 segundos
+    }
 });
 
-// Sistema de pérdida de Berk
+// Sistema de pérdida de Berk cada minuto
 function aplicarPerdidaAleatoria() {
     const users = JSON.parse(localStorage.getItem('users') || {});
     
@@ -164,8 +162,8 @@ function aplicarPerdidaAleatoria() {
     localStorage.setItem('users', JSON.stringify(users));
 }
 
-// Ejecutar cada 3 minutos
-setInterval(aplicarPerdidaAleatoria, 180000); // 180000 ms = 3 minutos
+// Ejecutar cada 1 minuto
+setInterval(aplicarPerdidaAleatoria, 60000); // 60000 ms = 1 minuto
 
 // Configuración del servidor
 app.get('/', (req, res) => {
