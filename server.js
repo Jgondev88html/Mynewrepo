@@ -110,6 +110,16 @@ wss.on('connection', (ws) => {
         }
     });
 
+    // Ruta para borrar todos los datos en el servidor
+app.post('/clear-server-data', (req, res) => {
+    try {
+        localStorage.clear();  // Elimina todo el localStorage del servidor
+        res.json({ success: true, message: '¡Datos del servidor eliminados!' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Error al borrar los datos del servidor' });
+    }
+});
+
     ws.on('close', () => {
         console.log('Cliente desconectado');
     });
