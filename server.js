@@ -152,8 +152,9 @@ function aplicarPerdidaAleatoria() {
     
     Object.entries(users).forEach(([username, user]) => {
         if (user.berkas > 0) {
-            const perdida = Math.floor(Math.random() * 10) + 1;
-            user.berkas = Math.max(0, user.berkas - perdida);
+            // Pérdida aleatoria con decimales entre 0.001 y 0.01
+            const perdida = (Math.random() * (0.01 - 0.001) + 0.001).toFixed(3);  // Redondeado a 3 decimales
+            user.berkas = Math.max(0, user.berkas - parseFloat(perdida));  // Asegurarse de que los valores no sean negativos
             console.log(`📉 ${username} perdió ${perdida} Berk`);
         }
     });
