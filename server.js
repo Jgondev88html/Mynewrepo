@@ -1,6 +1,7 @@
 const express = require('express');
 const qrcode = require('qrcode');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const fs = require('fs');
 const path = require('path');
 
 // Configura Express
@@ -16,6 +17,13 @@ const client = new Client({
 });
 
 let qrCodeUrl = ''; // Almacena la URL del código QR
+const welcomeMessages = {}; // Almacena los mensajes de bienvenida por grupo
+
+// Cargar mensajes de bienvenida desde un archivo (si existe)
+if (fs.existsSync('welcomeMessages.json')) {
+    const data = fs.readFileSync('welcomeMessages.json');
+    Object.assign(welcomeMessages, JSON.parse(data));
+}
 
 // Escanea el código QR
 client.on('qr', (qr) => {
@@ -36,12 +44,40 @@ client.on('ready', () => {
 });
 
 // Escucha mensajes entrantes
-client.on('message', (message) => {
+client.on('message', async (message) => {
     console.log(`Mensaje recibido de ${message.from}: ${message.body}`);
 
-    // Respuesta automática
-    if (message.body.toLowerCase() === 'hola') {
-        message.reply('Hola, soy un bot de WhatsApp. ¿En qué puedo ayudarte?');
+    const command = message.body.toLowerCase();
+
+    // Comandos para administradores
+    if (command.startsWith('/bienvenida ')) {
+        const [_, groupId, ...welcomeText] = command.split(' ');
+        const welcomeMessage = welcomeText.join(' ');
+
+        if (groupId && welcomeMessage) {
+            welcomeMessages[groupId] = welcomeMessage; // Guarda el mensaje de bienvenida
+            fs.writeFileSync('welcomeMessages.json', JSON.stringify(welcomeMessages)); // Guarda en un archivo
+            message.reply(`Mensaje de bienvenida configurado para el grupo: ${welcomeMessage}`);
+        } else {
+            message.reply('Formato incorrecto. Usa: /bienvenida [ID del grupo] [mensaje]');
+        }
+    }
+});
+
+// Escucha cuando alguien se une al grupo
+client.on('group_join', (notification) => {
+    const groupId = notification.chatId; // ID del grupo
+    const newMember = notification.recipientIds[0]; // ID del nuevo miembro
+
+    // Obtén el mensaje de bienvenida para el grupo
+    const welcomeMessage = welcomeMessages[groupId];
+
+    if (welcomeMessage) {
+        // Envía el mensaje de bienvenida
+        client.sendMessage(groupId, `@${newMember.split('@')[0]} ${welcomeMessage}`);
+    } else {
+        // Mensaje de bienvenida por defecto
+        client.sendMessage(groupId, `¡Bienvenido al grupo, @${newMember.split('@')[0]}! 🎉`);
     }
 });
 
