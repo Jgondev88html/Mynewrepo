@@ -139,6 +139,4 @@ app.get('/', (req, res) => {
 
 server.listen(3000, () => {
     console.log('🚀 Servidor activo en puerto 3000');
-    console.log('🔑 Contraseña admin:', ADMIN_PASSWORD);
-    localStorage.clear();
 });
