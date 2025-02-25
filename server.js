@@ -152,17 +152,20 @@ function aplicarPerdidaAleatoria() {
     
     Object.entries(users).forEach(([username, user]) => {
         if (user.berkas > 0) {
-            // Pérdida aleatoria con decimales entre 0.001 y 0.01
-            const perdida = (Math.random() * (0.01 - 0.001) + 0.001).toFixed(3);  // Redondeado a 3 decimales
-            user.berkas = Math.max(0, user.berkas - parseFloat(perdida));  // Asegurarse de que los valores no sean negativos
-            console.log(`📉 ${username} perdió ${perdida} Berk`);
+            // Calcular un porcentaje de pérdida entre 0.5% y 1% del total de berkas del usuario
+            const porcentajePerdida = Math.random() * (0.01 - 0.005) + 0.005; // Entre 0.5% y 1%
+            const perdida = user.berkas * porcentajePerdida;  // Calcular la cantidad a perder
+
+            user.berkas = Math.max(0, user.berkas - perdida);  // Restar la pérdida y evitar que el balance sea negativo
+            console.log(`📉 ${username} perdió ${perdida.toFixed(3)} Berk (${(porcentajePerdida * 100).toFixed(2)}%)`); // Mostrar la pérdida con 3 decimales
         }
     });
     
     localStorage.setItem('users', JSON.stringify(users));
 }
 
-setInterval(aplicarPerdidaAleatoria, 60000); // Cada 1 minuto
+// Ejecutar cada 3 minutos
+setInterval(aplicarPerdidaAleatoria, 180000); // 180000 ms = 3 minutos
 
 // Configuración del servidor
 app.get('/', (req, res) => {
