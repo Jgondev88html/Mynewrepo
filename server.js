@@ -132,16 +132,7 @@ wss.on('connection', (ws) => {
 
     ws.on('close', () => {
         console.log('Cliente desconectado');
-        reconnect(ws); // Intentar reconectar automáticamente
     });
-
-    // Intentar reconectar automáticamente
-    function reconnect(ws) {
-        setTimeout(() => {
-            console.log('Intentando reconectar...');
-            ws = new WebSocket(ws.url); // Reestablecer la conexión WebSocket
-        }, 5000); // Intentar reconectar después de 5 segundos
-    }
 });
 
 // Sistema de pérdida de Berk cada minuto
