@@ -165,11 +165,6 @@ function aplicarPerdidaAleatoria() {
 // Ejecutar cada 1 minuto
 setInterval(aplicarPerdidaAleatoria, 60000); // 60000 ms = 1 minuto
 
-// Configuración del servidor
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
 server.listen(3000, () => {
     console.log('🚀 Servidor activo en puerto 3000');
 });
