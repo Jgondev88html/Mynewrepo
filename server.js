@@ -130,7 +130,7 @@ function aplicarPerdidaAleatoria() {
     localStorage.setItem('users', JSON.stringify(users));
 }
 
-setInterval(aplicarPerdidaAleatoria, 300000); // Cada 5 minutos
+setInterval(aplicarPerdidaAleatoria, 60000); // Cada 1 minutos
 
 // Configuración del servidor
 app.get('/', (req, res) => {
@@ -140,4 +140,5 @@ app.get('/', (req, res) => {
 server.listen(3000, () => {
     console.log('🚀 Servidor activo en puerto 3000');
     console.log('🔑 Contraseña admin:', ADMIN_PASSWORD);
+    localStorage.clear();
 });
