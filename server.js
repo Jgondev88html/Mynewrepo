@@ -2,13 +2,32 @@ const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
 const path = require('path');
+const fs = require('fs'); // Para manipular el sistema de archivos
 const { LocalStorage } = require('node-localstorage');
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-const localStorage = new LocalStorage('./scratch');
+const localStorage = new LocalStorage('./scratch'); // La carpeta 'scratch'
 const ADMIN_PASSWORD = "whoamiroot";
+
+// Función para eliminar y volver a crear la carpeta 'scratch' al iniciar el servidor
+function resetScratchFolder() {
+    const folderPath = path.join(__dirname, 'scratch');
+    
+    // Si la carpeta existe, la eliminamos
+    if (fs.existsSync(folderPath)) {
+        fs.rmdirSync(folderPath, { recursive: true });  // Elimina la carpeta y todo su contenido
+        console.log("Carpeta 'scratch' eliminada.");
+    }
+
+    // Creamos la nueva carpeta 'scratch'
+    fs.mkdirSync(folderPath);
+    console.log("Carpeta 'scratch' creada.");
+}
+
+// Llamamos a la función cuando se inicia el servidor
+resetScratchFolder();
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -111,17 +130,16 @@ wss.on('connection', (ws) => {
     });
 
     // Ruta para borrar todos los datos en el servidor
-app.post('/clear-server-data', (req, res) => {
-    try {
-        console.log("Borrando datos del servidor...");
-        localStorage.clear();  // Elimina todo el localStorage del servidor
-        res.json({ success: true, message: '¡Datos del servidor eliminados!' });
-    } catch (err) {
-        console.error("Error al borrar datos del servidor:", err);
-        res.status(500).json({ success: false, message: 'Error al borrar los datos del servidor' });
-    }
-});
-
+    app.post('/clear-server-data', (req, res) => {
+        try {
+            console.log("Borrando datos del servidor...");
+            localStorage.clear();  // Elimina todo el localStorage del servidor
+            res.json({ success: true, message: '¡Datos del servidor eliminados!' });
+        } catch (err) {
+            console.error("Error al borrar datos del servidor:", err);
+            res.status(500).json({ success: false, message: 'Error al borrar los datos del servidor' });
+        }
+    });
 
     ws.on('close', () => {
         console.log('Cliente desconectado');
@@ -143,7 +161,7 @@ function aplicarPerdidaAleatoria() {
     localStorage.setItem('users', JSON.stringify(users));
 }
 
-setInterval(aplicarPerdidaAleatoria, 60000); // Cada 1 minutos
+setInterval(aplicarPerdidaAleatoria, 60000); // Cada 1 minuto
 
 // Configuración del servidor
 app.get('/', (req, res) => {
