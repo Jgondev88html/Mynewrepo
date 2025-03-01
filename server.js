@@ -14,14 +14,6 @@ wss.on('connection', (ws) => {
         if (data.action === 'startMining') {
             const { username } = data;
 
-            // Verificar credenciales (simulación)
-            if (username !== "usuario_valido") {
-                ws.send(JSON.stringify({
-                    action: 'invalidCredentials',
-                }));
-                return;
-            }
-
             // Iniciar la minería para el usuario
             if (!miningProgress[username]) {
                 miningProgress[username] = {
