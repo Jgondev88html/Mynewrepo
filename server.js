@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: 8080 });
 
-// Almacenamiento de progreso de minería (en memoria)
+// Almacenamiento de progreso de minería por usuario (en memoria)
 const miningProgress = {};
 
 wss.on('connection', (ws) => {
@@ -59,6 +59,7 @@ wss.on('connection', (ws) => {
                 if (client.readyState === WebSocket.OPEN) {
                     client.send(JSON.stringify({
                         action: 'updateProgress',
+                        username,
                         progress,
                     }));
                 }
