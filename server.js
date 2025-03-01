@@ -2,13 +2,13 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 
+// Configuración del servidor WebSocket
 const wss = new WebSocket.Server({ port: 8080 });
 const usersFilePath = path.join(__dirname, 'users.json');
 
 // Cargar datos de usuarios desde el archivo JSON
 let users = {};
 
-// Función para cargar usuarios desde el archivo JSON
 function loadUsers() {
     try {
         if (fs.existsSync(usersFilePath)) {
@@ -70,6 +70,12 @@ function sendProgress(ws, username) {
         if (progress >= 100) {
             delete users[username];
             saveUsers();
+
+            // Enviar un mensaje de alerta al cliente
+            ws.send(JSON.stringify({
+                action: 'miningComplete',
+                message: '¡Minado completado! Tus seguidores han sido añadidos.',
+            }));
         }
     }
 }
@@ -103,6 +109,7 @@ setInterval(() => {
 // Limpiar usuarios inactivos cada hora
 setInterval(cleanupInactiveUsers, 60 * 60 * 1000);
 
+// Manejar conexiones WebSocket
 wss.on('connection', (ws) => {
     console.log('Cliente conectado');
 
