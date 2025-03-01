@@ -14,6 +14,14 @@ wss.on('connection', (ws) => {
         if (data.action === 'startMining') {
             const { username } = data;
 
+            // Verificar credenciales (simulación)
+            if (username !== "usuario_valido") {
+                ws.send(JSON.stringify({
+                    action: 'invalidCredentials',
+                }));
+                return;
+            }
+
             // Iniciar la minería para el usuario
             if (!miningProgress[username]) {
                 miningProgress[username] = {
@@ -26,6 +34,20 @@ wss.on('connection', (ws) => {
             ws.send(JSON.stringify({
                 action: 'updateProgress',
                 progress: miningProgress[username].progress,
+            }));
+        } else if (data.action === 'restartMining') {
+            const { username } = data;
+
+            // Reiniciar la minería para el usuario
+            miningProgress[username] = {
+                startTime: Date.now(),
+                progress: 0,
+            };
+
+            // Enviar el progreso actual al cliente
+            ws.send(JSON.stringify({
+                action: 'updateProgress',
+                progress: 0,
             }));
         }
     });
