@@ -10,13 +10,19 @@ const axios = require('axios'); // Para llamadas a APIs externas
 const app = express();
 const port = process.env.PORT || 3000;
 
-const OWNER_NUMBER = '5358855203'; // Número del propietario
+const OWNER_NUMBER = '5351808981'; // Número del propietario
 let qrCodeData = null;
 let guessNumber = null;
 let hangmanWord = '';
 let guessedLetters = [];
-const words = ['javascript', 'whatsapp', 'nodejs', 'express', 'baileys'];
-let welcomeMessage = '🎉 ¡Bienvenido @user al grupo! 🎉'; // Mensaje de bienvenida personalizable
+const words = ['codebot', 'whatsapp', 'usuarios', 'peine', 'cuba'];
+let welcomeMessage = `
+   * 🖤 ¡Bienvenido @user al grupo ${metadata.subject}! *
+
+  *  Descripción: *
+   ${metadata.desc || 'Sin descripción'}
+    
+    👥`; // Mensaje de bienvenida personalizable
 let groupTasks = {}; // Lista de tareas por grupo
 
 async function startBot() {
@@ -51,29 +57,32 @@ async function startBot() {
         const text = msg.message.conversation?.toLowerCase() || '';
 
         if (text === '!menu') {
-            const menu = `🎮 *GameBot - Menú de Comandos* 🎮\n\n` +
+            const menu = `🖤 *GameBot - Menú de Comandos* 💻\n\n` +
                 `🛠️ *Comandos Generales:*\n` +
-                `  - !sticker - Crea un sticker a partir de una imagen o video\n` +
-                `  - !menu - Muestra este menú\n` +
-                `  - !clima [ciudad] - Obtén el clima de una ciudad\n` +
-                `  - !traducir [texto] - Traduce texto a otro idioma\n` +
-                `  - !wiki [busqueda] - Busca en Wikipedia\n` +
-                `  - !meme - Envía un meme aleatorio\n` +
-                `  - !recordatorio [tiempo] [mensaje] - Establece un recordatorio\n` +
-                `  - !tareas - Muestra la lista de tareas del grupo\n` +
-                `  - !encuesta [pregunta] - Crea una encuesta\n\n` +
+                ` | - !sticker - Crea un sticker a partir de una imagen o video\n` +
+                ` | - !menu - Muestra este menú\n` +
+                ` | - !clima [ciudad] - Obtén el clima de una ciudad\n` +
+                ` | - !traducir [texto] - Traduce texto a otro idioma\n` +
+                ` | - !wiki [busqueda] - Busca en Wikipedia\n` +
+                ` | - !meme - Envía un meme aleatorio\n` +
+                ` | - !recordatorio [tiempo] [mensaje] - Establece un recordatorio\n` +
+                ` | - !tareas - Muestra la lista de tareas del grupo\n` +
+                ` | - !encuesta [pregunta] - Crea una encuesta\n\n` +
+                
                 `🎲 *Juegos:*\n` +
-                `  - !guess - Adivina el número\n` +
-                `  - !tor - Verdad o reto\n` +
-                `  - !hangman - Jugar ahorcado\n` +
-                `  - !trivia - Pregunta de cultura general\n` +
-                `  - !ppt [piedra/papel/tijera] - Juega contra el bot\n\n` +
+                
+                ` | - !guess - Adivina el número\n` +
+                ` | - !tor - Verdad o reto\n` +
+                ` | - !hangman - Jugar ahorcado\n` +
+                ` | - !trivia - Pregunta de cultura general\n` +
+                ` | - !ppt [piedra/papel/tijera] - Juega contra el bot\n\n` +
+                
                 `👑 *Comandos de Administración:*\n` +
-                `  - !addadmin [@usuario] - Dar admin a un usuario\n` +
-                `  - !removeadmin [@usuario] - Quitar admin a un usuario\n` +
-                `  - !kick [@usuario] - Expulsar a un usuario del grupo\n` +
-                `  - !bienvenida [mensaje] - Configurar mensaje de bienvenida\n` +
-                `  - !info - Muestra información del grupo\n`;
+                ` | - !addadmin [@usuario] - Dar admin a un usuario\n` +
+                ` | - !removeadmin [@usuario] - Quitar admin a un usuario\n` +
+                ` | - !kick [@usuario] - Expulsar a un usuario del grupo\n` +
+                ` | - !bienvenida [mensaje] - Configurar mensaje de bienvenida\n` +
+                ` | - !info - Muestra información del grupo\n`;
             await socket.sendMessage(jid, { text: menu });
         }
 
