@@ -1,14 +1,21 @@
 {
-  "name": "whatsapp-bot",
+  "name": "codebot",
   "version": "1.0.0",
-  "description": "Bot de WhatsApp con servidor web integrado",
+  "description": "Bot de WhatsApp con funcionalidades de descarga de videos, stickers y más, utilizando Baileys y Express.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
+    "@whiskeysockets/baileys": "^6.0.0",
     "express": "^4.18.2",
     "qrcode": "^1.5.1",
-    "whatsapp-web.js": "^1.22.1"
-  }
+    "wa-sticker-formatter": "^1.2.1",
+    "ytdl-core": "^4.11.1",
+    "sharp": "^0.32.1"
+  },
+  "license": "MIT"
 }
