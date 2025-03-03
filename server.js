@@ -51,7 +51,7 @@ client.on('message', async (message) => {
     const contact = await message.getContact();
 
     // Comandos desde el número del dueño
-    if (contact.number === '5351755096') {
+    if (contact.number === '+5351755096') {
         // Apagar el bot
         if (message.body === '!apagar') {
             client.destroy();
