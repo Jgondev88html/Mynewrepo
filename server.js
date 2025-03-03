@@ -4,12 +4,17 @@ const { useMultiFileAuthState, makeWASocket, DisconnectReason } = require('@whis
 const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
+const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
 
 const app = express();
 const port = process.env.PORT || 3000;
 
 const OWNER_NUMBER = '5358855203';
 let qrCodeData = null;
+let guessNumber = null;
+let hangmanWord = '';
+let guessedLetters = [];
+const words = ['javascript', 'whatsapp', 'nodejs', 'express', 'baileys'];
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'baileys_auth'));
@@ -18,7 +23,7 @@ async function startBot() {
         auth: state,
         printQRInTerminal: true,
         logger: pino({ level: 'silent' }),
-        browser: ['CodeBot', 'Chrome', '1.0.0']
+        browser: ['GameBot', 'Chrome', '1.0.0']
     });
 
     socket.ev.on('connection.update', ({ qr }) => {
@@ -37,34 +42,61 @@ async function startBot() {
         const isGroup = jid.endsWith('@g.us');
         const metadata = isGroup ? await socket.groupMetadata(jid) : null;
         const admins = metadata ? metadata.participants.filter(p => p.admin).map(p => p.id) : [];
-        const isAdmin = msg.key.participant ? admins.includes(msg.key.participant) || msg.key.participant.includes(OWNER_NUMBER) : false;
+        const sender = msg.key.participant || msg.key.remoteJid;
+        const isAdmin = admins.includes(sender) || sender.includes(OWNER_NUMBER);
 
-        if (msg.message.conversation?.toLowerCase() === '!menu') {
-            const menu = `*🌟 CodeBot - Menú de Comandos 🌟*\n\n` +
-                `🔹 *Generales:*\n` +
-                `  - !menu - Ver este menú\n` +
-                (isGroup ? `\n🔹 *Comandos para grupos:*\n` +
-                `  - !tagall - Mencionar a todos (Solo admins)\n` : '');
+        const text = msg.message.conversation?.toLowerCase() || '';
+
+        if (text === '!menu') {
+            const menu = `🎮 *GameBot - Menú de Juegos* 🎮\n\n` +
+                `🎲 *Juegos:*\n` +
+                `  - !guess - Adivina el número\n` +
+                `  - !tor - Verdad o reto\n` +
+                `  - !hangman - Jugar ahorcado\n` +
+                `  - !trivia - Pregunta de cultura general\n` +
+                `  - !ppt [piedra/papel/tijera] - Juega contra el bot\n`;
             await socket.sendMessage(jid, { text: menu });
         }
 
-        if (isGroup && msg.message.conversation?.toLowerCase() === '!tagall' && isAdmin) {
-            const mentions = metadata.participants.map(p => p.id);
-            const text = '📢 Mención a todos:\n' + mentions.map(id => `@${id.split('@')[0]}`).join(' ');
-            await socket.sendMessage(jid, { text, mentions });
+        if (text === '!guess') {
+            guessNumber = Math.floor(Math.random() * 100) + 1;
+            await socket.sendMessage(jid, { text: '🎯 He pensado en un número entre 1 y 100. ¡Adivina cuál es!' });
+        }
+
+        if (!isNaN(text) && guessNumber) {
+            const guess = parseInt(text);
+            if (guess === guessNumber) {
+                await socket.sendMessage(jid, { text: `🎉 ¡Correcto! El número era ${guessNumber}.` });
+                guessNumber = null;
+            } else {
+                await socket.sendMessage(jid, { text: guess < guessNumber ? '⬆️ Más alto' : '⬇️ Más bajo' });
+            }
+        }
+
+        if (text === '!hangman') {
+            hangmanWord = words[Math.floor(Math.random() * words.length)];
+            guessedLetters = [];
+            let displayWord = hangmanWord.split('').map(l => '_').join(' ');
+            await socket.sendMessage(jid, { text: `🎭 Ahorcado: ${displayWord}` });
+        }
+
+        if (text.length === 1 && hangmanWord.includes(text)) {
+            guessedLetters.push(text);
+            let displayWord = hangmanWord.split('').map(l => guessedLetters.includes(l) ? l : '_').join(' ');
+            await socket.sendMessage(jid, { text: `🎭 Ahorcado: ${displayWord}` });
+            if (!displayWord.includes('_')) {
+                await socket.sendMessage(jid, { text: '🎉 ¡Ganaste! La palabra era ' + hangmanWord });
+                hangmanWord = '';
+            }
         }
     });
 
     socket.ev.on('group-participants.update', async ({ id, participants, action }) => {
         if (action === 'add') {
             const metadata = await socket.groupMetadata(id);
-            const groupDesc = metadata.desc || 'No hay descripción disponible';
-            const newMember = participants[0];
-
-            console.log(`Nuevo miembro detectado: ${newMember} en el grupo ${metadata.subject}`);
-
-            const welcomeMessage = `🎉 ¡Bienvenido @${newMember.split('@')[0]} al grupo *${metadata.subject}*! 🎉\n\n📌 *Descripción del grupo:*\n${groupDesc}`;
-            await socket.sendMessage(id, { text: welcomeMessage, mentions: [newMember] });
+            const userJid = participants[0];
+            const welcomeMessage = `🎉 ¡Bienvenido @${userJid.split('@')[0]} al grupo *${metadata.subject}*! 🎉`;
+            await socket.sendMessage(id, { text: welcomeMessage, mentions: [userJid] });
         }
     });
 
