@@ -39,7 +39,9 @@ async function startBot() {
         const isGroup = jid.endsWith('@g.us');
         const metadata = isGroup ? await socket.groupMetadata(jid) : null;
         const admins = metadata ? metadata.participants.filter(p => p.admin).map(p => p.id) : [];
-        const isAdmin = admins.includes(msg.key.participant) || msg.key.participant.includes(OWNER_NUMBER);
+        const participant = msg.key.participant || msg.key.remoteJid; // Usa remoteJid en chats privados
+        const isAdmin = admins.includes(participant) || participant.includes(OWNER_NUMBER);
+
 
         const messageText = msg.message.conversation?.toLowerCase() || '';
 
