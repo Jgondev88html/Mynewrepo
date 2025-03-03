@@ -8,11 +8,13 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Número del dueño (reemplaza con tu número en formato internacional)
-const OWNER_NUMBER = '+5351755096'; // Ejemplo: '+521234567890'
+let OWNER_NUMBER = '+5351755096'; // Ejemplo: '+521234567890'
 
 // Configura el cliente de WhatsApp
 const client = new Client({
-    authStrategy: new LocalAuth()
+    authStrategy: new LocalAuth({
+        dataPath: path.join(__dirname, 'wwebjs_auth')
+    })
 });
 
 // Variable para almacenar el código QR
@@ -41,7 +43,7 @@ client.on('message', async (message) => {
     const contact = await message.getContact();
 
     // Verifica si el mensaje proviene del dueño
-    const isOwner = contact.number === OWNER_NUMBER.replace('+', ''); // Elimina el '+' para comparar
+    const isOwner = contact.number === OWNER_NUMBER.replace('', ''); // Elimina el '+' para comparar
 
     // Comandos exclusivos para el dueño
     if (isOwner) {
@@ -57,6 +59,26 @@ client.on('message', async (message) => {
             OWNER_NUMBER = newOwner; // Cambia el número del dueño
             message.reply(`Nuevo dueño asignado: ${newOwner}`);
         }
+
+        // Reiniciar el bot
+        if (message.body === '!reiniciar') {
+            client.destroy();
+            client.initialize();
+            message.reply('Bot reiniciado.');
+        }
+    }
+
+    // Comando !menu
+    if (message.body === '!menu') {
+        const menu = `
+        *Comandos disponibles:*
+        - !menu: Muestra este menú de comandos.
+        - !apagar: Apaga el bot (solo dueño).
+        - !nuevodueño [número]: Cambia el número del dueño (solo dueño).
+        - !admin: Te asigna como admin en un grupo (solo en grupos).
+        - !reiniciar: Reinicia el bot (solo dueño).
+        `;
+        message.reply(menu);
     }
 
     // Bienvenida automática en grupos
@@ -82,6 +104,15 @@ client.on('message', async (message) => {
         const userName = contact.pushname || contact.number;
         message.reply(`¡Hola, ${userName}! 👋\n\nGracias por contactarme. ¿En qué puedo ayudarte hoy?`);
     }
+});
+
+// Manejo de errores
+client.on('auth_failure', (msg) => {
+    console.error('Error de autenticación:', msg);
+});
+
+client.on('disconnected', (reason) => {
+    console.error('Cliente desconectado:', reason);
 });
 
 // Inicia el cliente
