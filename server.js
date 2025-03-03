@@ -12,7 +12,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Configuración
-const OWNER_NUMBER = '521234567890'; // Reemplázalo con tu número
+const OWNER_NUMBER = '5351808981'; // Reemplázalo con tu número
 const BOT_NAME = 'CodeBot';
 const BOT_IMAGE = './codebot.jpg'; // Asegúrate de tener una imagen en esta ruta
 let qrCodeData = null;
