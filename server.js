@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const pino = require('pino');
 const ytdl = require('ytdl-core');
-const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
+const { Sticker } = require('wa-sticker-formatter');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -39,9 +39,11 @@ async function startBot() {
         const isGroup = jid.endsWith('@g.us');
         const metadata = isGroup ? await socket.groupMetadata(jid) : null;
         const admins = metadata ? metadata.participants.filter(p => p.admin).map(p => p.id) : [];
-        const isAdmin = admins.includes(msg.key.participant);
+        const isAdmin = admins.includes(msg.key.participant) || msg.key.participant.includes(OWNER_NUMBER);
 
-        if (msg.message.conversation?.toLowerCase() === '!menu') {
+        const messageText = msg.message.conversation?.toLowerCase() || '';
+
+        if (messageText === '!menu') {
             const menu = `*🌟 CodeBot - Menú de Comandos 🌟*\n\n` +
                 `🔹 *Generales:*\n` +
                 `  - !menu - Ver este menú\n` +
@@ -56,8 +58,8 @@ async function startBot() {
             await socket.sendMessage(jid, { text: menu });
         }
 
-        if (msg.message.conversation?.startsWith('!yt ')) {
-            const url = msg.message.conversation.split(' ')[1];
+        if (messageText.startsWith('!yt ')) {
+            const url = messageText.split(' ')[1];
             if (ytdl.validateURL(url)) {
                 const info = await ytdl.getInfo(url);
                 const format = ytdl.chooseFormat(info.formats, { quality: '18' });
@@ -68,7 +70,7 @@ async function startBot() {
             }
         }
 
-        if (msg.message.conversation?.toLowerCase() === '!qr') {
+        if (messageText === '!qr') {
             if (qrCodeData) {
                 await socket.sendMessage(jid, { image: { url: qrCodeData }, caption: 'Escanea este código QR para iniciar sesión' });
             } else {
@@ -76,7 +78,7 @@ async function startBot() {
             }
         }
 
-        if (isGroup && msg.message.conversation?.toLowerCase() === '!tagall' && isAdmin) {
+        if (isGroup && messageText === '!tagall' && isAdmin) {
             const mentions = metadata.participants.map(p => p.id);
             const text = '📢 Mención a todos:\n' + mentions.map(id => `@${id.split('@')[0]}`).join(' ');
             await socket.sendMessage(jid, { text, mentions });
