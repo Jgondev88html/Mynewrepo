@@ -10,7 +10,7 @@ const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter')
 const app = express();
 const port = process.env.PORT || 3000;
 
-const OWNER_NUMBER = '521234567890';
+const OWNER_NUMBER = '5358855203';
 let qrCodeData = null;
 
 async function startBot() {
