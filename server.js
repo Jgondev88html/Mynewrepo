@@ -1,191 +1,134 @@
 const express = require('express');
 const qrcode = require('qrcode');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
+const sharp = require('sharp');
+const ytdl = require('ytdl-core');
+const { useMultiFileAuthState, makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
 
-// Configura el servidor web
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Número del dueño (reemplaza con tu número en formato internacional)
-let OWNER_NUMBER = '+5351808981'; // Ejemplo: '+521234567890'
-
-// Configura el cliente de WhatsApp
-const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: path.join(__dirname, 'wwebjs_auth')
-    })
-});
-
-// Variable para almacenar el código QR
+// Configuración
+const OWNER_NUMBER = '521234567890'; // Reemplázalo con tu número
+const BOT_NAME = 'CodeBot';
+const BOT_IMAGE = './codebot.jpg'; // Asegúrate de tener una imagen en esta ruta
 let qrCodeData = null;
 
-// Genera el código QR
-client.on('qr', (qr) => {
-    qrcode.toDataURL(qr, (err, url) => {
-        if (err) {
-            console.error('Error al generar el código QR:', err);
-            return;
-        }
-        qrCodeData = url; // Almacena el código QR como una URL de datos
-        console.log('Código QR generado. Escanea desde la página web.');
+async function startBot() {
+    const { state, saveCreds } = await useMultiFileAuthState(path.join(__dirname, 'baileys_auth'));
+    const socket = makeWASocket({
+        auth: state,
+        printQRInTerminal: true,
+        logger: console,
+        browser: ['CodeBot', 'Chrome', '1.0.0']
     });
-});
 
-// Cuando el cliente esté listo
-client.on('ready', () => {
-    console.log('Client is ready!');
-});
+    socket.ev.on('connection.update', ({ qr }) => {
+        if (qr) {
+            qrcode.toDataURL(qr, (err, url) => {
+                if (!err) qrCodeData = url;
+            });
+        }
+    });
 
-// Escucha los mensajes
-client.on('message', async (message) => {
-    const chat = await message.getChat();
-    const contact = await message.getContact();
+    socket.ev.on('messages.upsert', async ({ messages }) => {
+        const msg = messages[0];
+        if (!msg.message || msg.key.fromMe) return;
 
-    // Verifica si el mensaje proviene del dueño
-    const isOwner = contact.number === OWNER_NUMBER.replace('', ''); // Elimina el '+' para comparar
+        const jid = msg.key.remoteJid;
+        const user = msg.pushName || 'Usuario';
+        const isGroup = jid.endsWith('@g.us');
+        const metadata = isGroup ? await socket.groupMetadata(jid) : null;
+        const admins = isGroup ? metadata.participants.filter(p => p.admin).map(p => p.id) : [];
+        const isAdmin = isGroup && admins.includes(msg.key.participant);
 
-    // Comandos exclusivos para el dueño
-    if (isOwner) {
-        // Apagar el bot
-        if (message.body === '!apagar') {
-            client.destroy();
-            console.log('Bot apagado por el dueño.');
+        // Comando !menu con imagen del bot
+        if (msg.message.conversation?.toLowerCase() === '!menu') {
+            const menuText = `
+🌟 *${BOT_NAME} - Menú de Comandos* 🌟
+
+🔹 *Generales:*
+  - !menu → Ver este menú
+  - !sticker → Crear sticker desde imagen
+  - !vidsticker → Crear sticker desde video
+  - !play [nombre] → Descargar música de YouTube
+  - !yt [url] → Descargar video de YouTube
+  - !insta [url] → Descargar video de Instagram
+
+🔹 *Comandos de grupo:* (solo admins)
+  - !tagall → Mencionar a todos
+  - !promote @user → Hacer admin
+  - !demote @user → Quitar admin
+  - !kick @user → Expulsar usuario
+  - !groupinfo → Info del grupo
+`;
+            
+            const imageBuffer = fs.existsSync(BOT_IMAGE) ? fs.readFileSync(BOT_IMAGE) : null;
+            if (imageBuffer) {
+                await socket.sendMessage(jid, { image: imageBuffer, caption: menuText });
+            } else {
+                await socket.sendMessage(jid, { text: menuText });
+            }
         }
 
-        // Agregar un nuevo dueño (opcional)
-        if (message.body.startsWith('!nuevodueño ')) {
-            const newOwner = message.body.replace('!nuevodueño ', '');
-            OWNER_NUMBER = newOwner; // Cambia el número del dueño
-            message.reply(`Nuevo dueño asignado: ${newOwner}`);
+        // Descargar videos de YouTube
+        if (msg.message.conversation?.startsWith('!yt ')) {
+            const url = msg.message.conversation.split(' ')[1];
+            if (ytdl.validateURL(url)) {
+                const videoStream = ytdl(url, { filter: 'audioandvideo', quality: 'highest' });
+                const filePath = path.join(__dirname, 'video.mp4');
+                
+                videoStream.pipe(fs.createWriteStream(filePath)).on('finish', async () => {
+                    await socket.sendMessage(jid, { video: fs.readFileSync(filePath) });
+                    fs.unlinkSync(filePath);
+                });
+            } else {
+                await socket.sendMessage(jid, { text: '❌ URL de YouTube no válida.' });
+            }
         }
 
-        // Reiniciar el bot
-        if (message.body === '!reiniciar') {
-            client.destroy();
-            client.initialize();
-            message.reply('Bot reiniciado.');
+        // Mencionar a todos (solo admins)
+        if (msg.message.conversation?.toLowerCase() === '!tagall' && isAdmin) {
+            const mentions = metadata.participants.map(p => p.id);
+            await socket.sendMessage(jid, { text: '📢 Mención a todos:', mentions });
         }
-    }
+    });
 
-    // Comando !menu
-    if (message.body === '!menu') {
-        const menu = `
-        *Comandos disponibles:*
-        - !menu: Muestra este menú de comandos.
-        - !apagar: Apaga el bot (solo dueño).
-        - !nuevodueño [número]: Cambia el número del dueño (solo dueño).
-        - !admin: Te asigna como admin en un grupo (solo en grupos).
-        - !reiniciar: Reinicia el bot (solo dueño).
-        `;
-        message.reply(menu);
-    }
+    // Bienvenida con descripción del grupo
+    socket.ev.on('group-participants.update', async ({ id, participants, action }) => {
+        if (action === 'add') {
+            const metadata = await socket.groupMetadata(id);
+            const description = metadata.desc || 'Sin descripción';
+            const userJid = participants[0];
+            const userProfilePicture = await socket.profilePictureUrl(userJid, 'image').catch(() => null);
+            const welcomeMessage = `🎉 ¡Bienvenido @${userJid.split('@')[0]}! 🎉\n📌 *Descripción del grupo:*\n${description}`;
 
-    // Bienvenida automática en grupos
-    if (chat.isGroup) {
-        const admins = await chat.getParticipants().filter(participant => participant.isAdmin);
-        const isAdmin = admins.some(admin => admin.id._serialized === contact.id._serialized);
-
-        // Expulsar si se envía un link y no es admin
-        if (message.body.includes('http') && !isAdmin) {
-            chat.sendMessage(`@${contact.number} ha sido expulsado por enviar un link.`);
-            chat.removeParticipants([contact.id._serialized]);
+            if (userProfilePicture) {
+                const imageBuffer = await axios.get(userProfilePicture, { responseType: 'arraybuffer' }).then(res => res.data);
+                await socket.sendMessage(id, { image: imageBuffer, caption: welcomeMessage, mentions: [userJid] });
+            } else {
+                await socket.sendMessage(id, { text: welcomeMessage, mentions: [userJid] });
+            }
         }
+    });
 
-        // Asignar admin
-        if (message.body === '!admin' && chat.isGroup) {
-            chat.promoteParticipants([contact.id._serialized]);
-            chat.sendMessage(`@${contact.number} ahora es admin.`);
+    socket.ev.on('connection.update', (update) => {
+        if (update.connection === 'close' && update.lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut) {
+            setTimeout(startBot, 5000);
         }
-    }
+    });
 
-    // Bienvenida automática en privados
-    if (!chat.isGroup && !message.fromMe) {
-        const userName = contact.pushname || contact.number;
-        message.reply(`¡Hola, ${userName}! 👋\n\nGracias por contactarme. ¿En qué puedo ayudarte hoy?`);
-    }
-});
+    socket.ev.on('creds.update', saveCreds);
+}
 
-// Manejo de errores
-client.on('auth_failure', (msg) => {
-    console.error('Error de autenticación:', msg);
-});
-
-client.on('disconnected', (reason) => {
-    console.error('Cliente desconectado:', reason);
-});
-
-// Inicia el cliente
-client.initialize();
-
-// Ruta para obtener el código QR
-app.get('/qrcode', (req, res) => {
-    if (qrCodeData) {
-        res.send({ qr: qrCodeData });
-    } else {
-        res.status(404).send('Código QR no disponible.');
-    }
-});
-
-// Ruta para mostrar la página web con el código QR
+// Servidor web para QR
 app.get('/qr', (req, res) => {
-    const html = `
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Escanear Código QR</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                height: 100vh;
-                margin: 0;
-                background-color: #f0f0f0;
-            }
-            #qr-container {
-                text-align: center;
-            }
-            #qr-image {
-                max-width: 100%;
-                height: auto;
-            }
-        </style>
-    </head>
-    <body>
-        <div id="qr-container">
-            <h1>Escanee el Código QR</h1>
-            <img id="qr-image" src="" alt="Código QR">
-            <p>Use WhatsApp en su teléfono para escanear este código.</p>
-        </div>
-
-        <script>
-            // Obtener el código QR del servidor
-            async function fetchQRCode() {
-                const response = await fetch('/qrcode');
-                const data = await response.json();
-                if (data.qr) {
-                    document.getElementById('qr-image').src = data.qr;
-                } else {
-                    alert('Código QR no disponible. Intente nuevamente.');
-                }
-            }
-
-            // Actualizar el código QR cada 5 segundos
-            setInterval(fetchQRCode, 5000);
-            fetchQRCode(); // Cargar el código QR al abrir la página
-        </script>
-    </body>
-    </html>
-    `;
-
-    res.send(html);
+    res.send(`<html><body><img src="${qrCodeData || ''}" width="300"/><script>setInterval(() => location.reload(), 5000)</script></body></html>`);
 });
 
-// Inicia el servidor
-app.listen(port, () => {
-    console.log(`Servidor web corriendo en http://localhost:${port}/qr`);
-});
+// Iniciar
+startBot();
+app.listen(port, () => console.log(`Servidor en http://localhost:${port}/qr`));
