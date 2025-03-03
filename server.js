@@ -8,7 +8,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Número del dueño (reemplaza con tu número en formato internacional)
-let OWNER_NUMBER = '+5351755096'; // Ejemplo: '+521234567890'
+let OWNER_NUMBER = '+5351808981'; // Ejemplo: '+521234567890'
 
 // Configura el cliente de WhatsApp
 const client = new Client({
