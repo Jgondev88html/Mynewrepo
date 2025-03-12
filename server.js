@@ -57,7 +57,7 @@ wss.on('connection', (ws) => {
     console.log('Nuevo cliente WebSocket conectado');
 
     // Enviar un mensaje de bienvenida al cliente
-    ws.send(JSON.stringify({ type: 'message', text: 'Conexión WebSocket establecida' }));
+    ws.send(JSON.stringify({ type: 'message', text: 'Bienvenido a la pagina de no hacer nada...' }));
 
     // Manejar mensajes del cliente
     ws.on('message', (message) => {
