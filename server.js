@@ -3,12 +3,20 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const WebSocket = require('ws');
+const cors = require('cors'); // Importar el paquete cors
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const port = process.env.PORT || 3000;
+
+// Configurar CORS
+app.use(cors({
+    origin: 'http://localhost:8080', // Permitir solicitudes desde este origen
+    methods: ['GET', 'POST'], // Permitir solo estos métodos HTTP
+    credentials: true // Permitir el envío de credenciales (si es necesario)
+}));
 
 // Middleware para parsear JSON
 app.use(express.json());
@@ -115,7 +123,7 @@ wss.on('connection', (ws) => {
     console.log('Nuevo cliente WebSocket conectado');
 
     // Enviar un mensaje de bienvenida al cliente
-    ws.send(JSON.stringify({ type: 'message', text: 'Estas vigilado...' }));
+    ws.send(JSON.stringify({ type: 'message', text: 'Conexión WebSocket establecida' }));
 
     // Manejar mensajes del cliente
     ws.on('message', (message) => {
