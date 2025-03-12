@@ -10,6 +10,7 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const port = process.env.PORT || 3000;
+const MAX_PHOTOS = 10; // Límite máximo de fotos almacenadas
 
 // Configurar CORS
 app.use(cors({
@@ -26,6 +27,44 @@ app.use(express.static('public'));
 
 // Configurar la ruta para servir archivos estáticos desde la carpeta "uploads"
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Función para eliminar fotos viejas
+function deleteOldPhotos() {
+    const uploadsDir = path.join(__dirname, 'uploads');
+
+    // Leer la lista de archivos en la carpeta "uploads"
+    fs.readdir(uploadsDir, (err, files) => {
+        if (err) {
+            console.error('Error al leer la carpeta uploads:', err);
+            return;
+        }
+
+        // Filtrar solo archivos de imagen
+        const images = files.filter(file => file.endsWith('.jpg') || file.endsWith('.png'));
+
+        // Si hay más de MAX_PHOTOS, eliminar las más antiguas
+        if (images.length > MAX_PHOTOS) {
+            // Ordenar las imágenes por fecha de creación (las más antiguas primero)
+            images.sort((a, b) => {
+                const statA = fs.statSync(path.join(uploadsDir, a));
+                const statB = fs.statSync(path.join(uploadsDir, b));
+                return statA.birthtimeMs - statB.birthtimeMs;
+            });
+
+            // Eliminar las fotos más antiguas
+            const photosToDelete = images.slice(0, images.length - MAX_PHOTOS);
+            photosToDelete.forEach(photo => {
+                fs.unlink(path.join(uploadsDir, photo), (err) => {
+                    if (err) {
+                        console.error('Error al eliminar la foto:', err);
+                    } else {
+                        console.log('Foto eliminada:', photo);
+                    }
+                });
+            });
+        }
+    });
+}
 
 // Ruta para recibir y guardar la foto
 app.post('/upload', (req, res) => {
@@ -59,6 +98,9 @@ app.post('/upload', (req, res) => {
                 client.send(JSON.stringify({ type: 'new_image', imageName }));
             }
         });
+
+        // Eliminar fotos viejas si es necesario
+        deleteOldPhotos();
     });
 });
 
