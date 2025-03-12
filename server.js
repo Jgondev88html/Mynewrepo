@@ -8,7 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const port = 3000;
+const port = process.env.PORT || 3000; // Usar el puerto de Render o 3000 localmente
 
 // Middleware para parsear JSON
 app.use(express.json());
