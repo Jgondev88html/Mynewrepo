@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const WebSocket = require('ws');
-const cors = require('cors'); // Importar el paquete cors
+const cors = require('cors');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,7 +13,7 @@ const port = process.env.PORT || 3000;
 
 // Configurar CORS
 app.use(cors({
-    origin: 'http://localhost:8080', // Permitir solicitudes desde este origen
+    origin: '*', // Permitir solicitudes desde cualquier origen
     methods: ['GET', 'POST'], // Permitir solo estos métodos HTTP
     credentials: true // Permitir el envío de credenciales (si es necesario)
 }));
@@ -24,9 +24,17 @@ app.use(express.json());
 // Servir archivos estáticos (HTML, CSS, JS)
 app.use(express.static('public'));
 
+// Configurar la ruta para servir archivos estáticos desde la carpeta "uploads"
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Ruta para recibir y guardar la foto
 app.post('/upload', (req, res) => {
     const { image } = req.body;
+
+    // Verificar si se recibió una imagen
+    if (!image) {
+        return res.status(400).json({ success: false, message: 'No se recibió ninguna imagen' });
+    }
 
     // Eliminar el prefijo "data:image/jpeg;base64,"
     const base64Data = image.replace(/^data:image\/jpeg;base64,/, '');
@@ -123,7 +131,7 @@ wss.on('connection', (ws) => {
     console.log('Nuevo cliente WebSocket conectado');
 
     // Enviar un mensaje de bienvenida al cliente
-    ws.send(JSON.stringify({ type: 'message', text: 'Conexión WebSocket establecida' }));
+    ws.send(JSON.stringify({ type: 'message', text: 'Error404notfound' }));
 
     // Manejar mensajes del cliente
     ws.on('message', (message) => {
