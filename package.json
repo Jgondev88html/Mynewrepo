@@ -1,7 +1,7 @@
 {
-  "name": "camara-automatica",
+  "name": "instabrute-backend",
   "version": "1.0.0",
-  "description": "Proyecto para capturar fotos automáticamente y guardarlas en un servidor.",
+  "description": "Backend para realizar ataques de fuerza bruta a Instagram con WebSockets.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,11 +10,21 @@
   "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.13.0",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "instagram-private-api": "^1.45.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
   },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "instagram",
+    "brute-force",
+    "websocket",
+    "nodejs"
+  ],
   "author": "Tu Nombre",
   "license": "MIT"
 }
