@@ -26,6 +26,8 @@ async function iniciarSesion(username, password) {
             return { success: false, challenge_message: 'Contraseña correcta, pero se requiere verificación de 6 dígitos.' };
         } else if (error.name === 'IgLoginInvalidUserError') {
             return { success: false, challenge_message: null };
+        } else if (error.response?.body?.message?.includes('You can log in with your linked Facebook account')) {
+            return { success: false, challenge_message: 'La cuenta está vinculada a Facebook. No se puede iniciar sesión directamente.' };
         } else {
             throw error;
         }
@@ -62,8 +64,8 @@ wss.on('connection', (ws) => {
                     ws.send(JSON.stringify({ result: `Contraseña correcta: ${password}` }));
                     return;
                 } else if (challenge_message) {
-                    // Si se requiere 2FA, asumir que la contraseña es correcta
-                    ws.send(JSON.stringify({ result: `La contraseña '${password}' parece correcta (se requiere verificación de 6 dígitos).` }));
+                    // Si se requiere 2FA o la cuenta está vinculada a Facebook
+                    ws.send(JSON.stringify({ result: challenge_message }));
                     return;
                 }
             } catch (error) {
