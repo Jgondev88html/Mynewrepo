@@ -11,6 +11,11 @@ const wss = new WebSocket.Server({ server });
 // Servir el frontend
 app.use(express.static('public'));
 
+// Contraseña de acceso personalizada
+const accessPassword = '1234'; // Contraseña fija
+
+console.log(`[DEBUG] Contraseña de acceso: ${accessPassword}`);
+
 // Función para probar una contraseña
 async function testPassword(username, password) {
   const ig = new IgApiClient();
@@ -50,8 +55,23 @@ async function testPassword(username, password) {
 wss.on('connection', (ws) => {
   console.log('[DEBUG] Nuevo cliente conectado');
 
+  // Enviar la contraseña de acceso al cliente
+  ws.send(JSON.stringify({
+    type: 'accessPassword',
+    password: accessPassword,
+  }));
+
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
+
+    if (data.type === 'verifyAccessPassword') {
+      // Verificar la contraseña de acceso
+      if (data.password === accessPassword) {
+        ws.send(JSON.stringify({ type: 'accessGranted' }));
+      } else {
+        ws.send(JSON.stringify({ type: 'accessDenied', message: 'Contraseña de acceso incorrecta.' }));
+      }
+    }
 
     if (data.type === 'startLogin') {
       const { username, passwords } = data;
@@ -101,4 +121,5 @@ wss.on('connection', (ws) => {
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`[DEBUG] Servidor ejecutándose en http://localhost:${PORT}`);
+  console.log(`[DEBUG] Contraseña de acceso: ${accessPassword}`);
 });
