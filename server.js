@@ -1,7 +1,7 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core'); // Usamos puppeteer-core
 
 const app = express();
 const server = http.createServer(app);
@@ -54,8 +54,9 @@ wss.on('connection', (ws) => {
       if (data.type === 'startLogin') {
         const { identifier, passwords } = data;
         
-        const browser = await puppeteer.launch({ 
-          headless: true, // Modo headless para Render
+        const browser = await puppeteer.launch({
+          headless: true,
+          executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium-browser', // Ruta de Chromium en Render
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
         
@@ -107,7 +108,7 @@ app.get('/', (req, res) => {
 });
 
 // Iniciar servidor
-const PORT = process.env.PORT || 3000; // Usar el puerto de Render o 3000 localmente
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Servidor en ejecución en http://localhost:${PORT}`);
 });
