@@ -12,7 +12,7 @@ const wss = new WebSocket.Server({ server });
 app.use(express.static('public'));
 
 // Contraseña de acceso personalizada
-const accessPassword = '1234'; // Contraseña fija
+const accessPassword = 'error404notfoundÑ'; // Contraseña fija
 
 console.log(`[DEBUG] Contraseña de acceso: ${accessPassword}`);
 
