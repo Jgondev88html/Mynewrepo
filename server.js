@@ -1,6 +1,6 @@
 const WebSocket = require('ws');
 const express = require('express');
-const { testPassword } = require('./instagram');
+const { IgApiClient } = require('instagram-private-api');
 require('dotenv').config();
 
 // Configuración del servidor HTTP y WebSocket
@@ -10,6 +10,18 @@ const wss = new WebSocket.Server({ server });
 
 // Servir el frontend
 app.use(express.static('public'));
+
+// Función para probar una contraseña
+async function testPassword(username, password) {
+  const ig = new IgApiClient();
+  try {
+    ig.state.generateDevice(username);
+    await ig.account.login(username, password);
+    return { success: true, password };
+  } catch (error) {
+    return { success: false, password, message: error.message };
+  }
+}
 
 // Manejo de conexiones WebSocket
 wss.on('connection', (ws) => {
