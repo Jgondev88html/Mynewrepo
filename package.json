@@ -1,17 +1,19 @@
 {
-  "name": "facebook-login-server",
+  "name": "instagram-login",
   "version": "1.0.0",
-  "description": "Servidor para pruebas de inicio de sesión en Facebook",
-  "main": "server.js",
+  "description": "Servidor para probar contraseñas de Instagram",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server/server.js",
+    "dev": "nodemon server/server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "ws": "^8.13.0",
-    "puppeteer-core": "^21.0.0" 
+    "instagram-private-api": "^1.45.3",
+    "dotenv": "^16.0.3"
   },
-  "engines": {
-    "node": "18.x" 
+  "devDependencies": {
+    "nodemon": "^2.0.20"
   }
 }
