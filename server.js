@@ -32,6 +32,7 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'startLogin') {
       const { username, passwords } = data;
+      let correctPassword = null;
 
       // Probar cada contraseña línea por línea
       for (const password of passwords) {
@@ -40,15 +41,27 @@ wss.on('connection', (ws) => {
         // Enviar el resultado al frontend
         ws.send(JSON.stringify(result));
 
-        // Si la contraseña es correcta, detener el proceso
+        // Si la contraseña es correcta, guardarla y detener el proceso
         if (result.success) {
-          ws.send(JSON.stringify({ type: 'finished' }));
+          correctPassword = result.password;
           break;
         }
       }
 
-      // Indicar que el proceso ha terminado
-      ws.send(JSON.stringify({ type: 'finished' }));
+      // Enviar el resultado final al frontend
+      if (correctPassword) {
+        ws.send(JSON.stringify({
+          type: 'finished',
+          success: true,
+          message: `¡Contraseña correcta encontrada: ${correctPassword}`,
+        }));
+      } else {
+        ws.send(JSON.stringify({
+          type: 'finished',
+          success: false,
+          message: 'Ninguna contraseña fue correcta.',
+        }));
+      }
     }
   });
 
