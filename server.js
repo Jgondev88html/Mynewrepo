@@ -39,7 +39,7 @@ async function testPassword(username, password, retries = 3) {
 
     if (retries > 0) {
       console.log(`[DEBUG] Reintentando... (${retries} intentos)`);
-      await delay(2000);
+      await delay(1000);
       return testPassword(username, password, retries - 1);
     }
 
