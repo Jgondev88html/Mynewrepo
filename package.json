@@ -1,20 +1,17 @@
 {
-  "name": "facebook-password-checker",
+  "name": "facebook-login-server",
   "version": "1.0.0",
-  "description": "Herramienta educativa para pruebas de seguridad en autenticación",
+  "description": "Servidor para pruebas de inicio de sesión en Facebook",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "author": "Tu Nombre",
-  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
-    "puppeteer": "^21.7.0",
-    "ws": "^8.16.0"
+    "ws": "^8.13.0",
+    "puppeteer": "^21.0.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "18.x" // Especifica la versión de Node.js
   }
 }
