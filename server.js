@@ -10,7 +10,7 @@ const wss = new WebSocket.Server({ server });
 // Configuración mejorada
 const CONFIG = {
   ACCESS_PASSWORD: process.env.ACCESS_PASSWORD || 'error404notfoundÑ',
-  DELAY_BETWEEN_ATTEMPTS: 2500, // Aumentamos el delay para evitar bloqueos
+  DELAY_BETWEEN_ATTEMPTS: 3000, // Aumentamos el delay para evitar bloqueos
   MAX_RETRIES: 2, // Intentos adicionales por contraseña
   PORT: process.env.PORT || 3000
 };
