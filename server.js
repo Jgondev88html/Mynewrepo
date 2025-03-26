@@ -1,98 +1,117 @@
-// server.js
 const express = require('express');
 const WebSocket = require('ws');
 const { IgApiClient } = require('instagram-private-api');
+const path = require('path');
 
-// Configuración inicial
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Servir archivos estáticos
-app.use(express.static('public'));
+// Configuración de Express
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
-// Iniciar servidor HTTP
-const server = app.listen(PORT, () => {
-  console.log(`Servidor escuchando en http://localhost:${PORT}`);
-});
-
-// Configurar WebSocket
-const wss = new WebSocket.Server({ server });
-
-// Cliente de Instagram
 class InstagramManager {
   constructor() {
     this.ig = new IgApiClient();
-    this.ig.state.generateDevice(process.env.IG_USERNAME || 'default_user');
-    this.activeSessions = new Map();
+    this.activeChallenges = new Map();
+    this.userSessions = new Map();
+  }
+
+  async initClient(username) {
+    this.ig.state.generateDevice(username);
+    this.ig.request.end$.subscribe(() => {
+      this.ig.state.serialize().then(state => {
+        const serialized = JSON.stringify(state);
+        this.ig.state.deserialize(serialized);
+      });
+    });
   }
 
   async login(username, password, ws) {
     try {
-      // Simular flujo de login de Instagram
+      await this.initClient(username);
       await this.ig.simulate.preLoginFlow();
-      
-      // Login real
-      const user = await this.ig.account.login(username, password);
-      
-      // Simular post-login
-      await this.ig.simulate.postLoginFlow();
-      
-      // Guardar sesión
-      this.activeSessions.set(ws, {
-        ig: this.ig,
-        user,
-        lastActivity: Date.now()
+
+      const user = await this.ig.account.login(username, password).catch(async (error) => {
+        if (error.name === 'IgCheckpointError') {
+          return this.handleChallenge(username, error, ws);
+        }
+        throw error;
       });
 
-      return {
-        success: true,
-        user: {
-          username: user.username,
-          fullName: user.full_name,
-          profilePic: user.profile_pic_url
-        }
-      };
+      if (user && user.username) {
+        await this.ig.simulate.postLoginFlow();
+        this.userSessions.set(ws, { ig: this.ig, username });
+        return { success: true, user };
+      }
+      return { success: false, error: 'Error desconocido' };
+
     } catch (error) {
-      console.error('Login error:', error);
-      return {
-        success: false,
-        error: this.parseError(error)
-      };
+      return { success: false, error: this.parseError(error) };
     }
   }
 
-  async followUser(ws, targetUsername) {
-    const session = this.activeSessions.get(ws);
-    if (!session) {
-      return { success: false, error: 'Sesión no válida' };
+  async handleChallenge(username, error, ws) {
+    try {
+      await this.initClient(username);
+      const challenge = await this.ig.challenge.resolve(error);
+      this.activeChallenges.set(ws, challenge);
+
+      ws.send(JSON.stringify({
+        type: 'challenge_required',
+        methods: challenge.availableValidationMethods,
+        message: 'Instagram requiere verificación de seguridad'
+      }));
+
+      return new Promise((resolve) => {
+        challenge.on('challenge', async (challengeData) => {
+          ws.send(JSON.stringify({
+            type: 'challenge_code',
+            message: challengeData.message
+          }));
+        });
+      });
+    } catch (error) {
+      return { success: false, error: this.parseError(error) };
     }
+  }
+
+  async submitChallengeCode(ws, code, method = '0') {
+    const challenge = this.activeChallenges.get(ws);
+    if (!challenge) return { success: false, error: 'No hay desafío activo' };
 
     try {
-      const userId = await session.ig.user.getIdByUsername(targetUsername);
-      await session.ig.friendship.create(userId);
-      return { success: true };
+      // Seleccionar método de verificación (0 = SMS, 1 = Email)
+      await challenge.selectVerifyMethod(method);
+      
+      // Validar código
+      const validation = await challenge.validate(code);
+      
+      if (validation) {
+        await challenge.auto();
+        this.activeChallenges.delete(ws);
+        return { success: true };
+      }
+      return { success: false, error: 'Código inválido' };
     } catch (error) {
-      console.error('Follow error:', error);
       return { success: false, error: this.parseError(error) };
     }
   }
 
   parseError(error) {
-    if (error.message.includes('password')) {
-      return 'Contraseña incorrecta';
-    } else if (error.message.includes('username')) {
-      return 'Usuario no encontrado';
-    } else if (error.message.includes('challenge')) {
-      return 'Verificación requerida - Revisa la app de Instagram';
-    } else {
-      return 'Error en la operación';
-    }
+    if (error.message.includes('password')) return 'Contraseña incorrecta';
+    if (error.message.includes('username')) return 'Usuario no encontrado';
+    if (error.message.includes('challenge')) return 'Verificación requerida';
+    if (error.message.includes('code')) return 'Código de verificación incorrecto';
+    return error.message || 'Error en la operación';
   }
 }
 
 const instagramManager = new InstagramManager();
 
-// Manejo de conexiones WebSocket
+// Configurar WebSocket
+const wss = new WebSocket.Server({ server });
+
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
 
@@ -113,15 +132,35 @@ wss.on('connection', (ws) => {
           }));
           break;
 
-        case 'follow':
-          const followResult = await instagramManager.followUser(
-            ws, 
-            data.targetUsername
+        case 'submit_challenge_code':
+          const challengeResult = await instagramManager.submitChallengeCode(
+            ws,
+            data.code,
+            data.method
           );
           ws.send(JSON.stringify({
-            type: 'follow_response',
-            ...followResult
+            type: 'challenge_result',
+            ...challengeResult
           }));
+          break;
+
+        case 'follow':
+          const session = instagramManager.userSessions.get(ws);
+          if (session) {
+            const followResult = await session.ig.friendship.create(
+              await session.ig.user.getIdByUsername(data.targetUsername)
+            );
+            ws.send(JSON.stringify({
+              type: 'follow_response',
+              success: true
+            }));
+          } else {
+            ws.send(JSON.stringify({
+              type: 'follow_response',
+              success: false,
+              error: 'Sesión no válida'
+            }));
+          }
           break;
 
         default:
@@ -131,7 +170,7 @@ wss.on('connection', (ws) => {
           }));
       }
     } catch (error) {
-      console.error('Error procesando mensaje:', error);
+      console.error('Error:', error);
       ws.send(JSON.stringify({
         type: 'error',
         error: 'Error procesando la solicitud'
@@ -141,24 +180,16 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('Cliente desconectado');
-    instagramManager.activeSessions.delete(ws);
+    instagramManager.activeChallenges.delete(ws);
+    instagramManager.userSessions.delete(ws);
   });
 });
 
-// Endpoint básico para verificar el servidor
+// Ruta de estado
 app.get('/status', (req, res) => {
   res.json({
     status: 'online',
     clients: wss.clients.size,
-    activeSessions: instagramManager.activeSessions.size
+    activeSessions: instagramManager.userSessions.size
   });
-});
-
-// Manejo de errores
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
 });
