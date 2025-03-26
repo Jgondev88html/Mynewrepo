@@ -8,13 +8,8 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Configuración CORS para frontend externo
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || 'http://127.0.0.1:5500', // Quita la barra final
-  credentials: true
-};
-
-app.use(cors(corsOptions));
+// Configuración CORS para permitir cualquier origen
+app.use(cors());
 app.use(express.json());
 
 // Cliente Instagram
@@ -151,4 +146,4 @@ function broadcastUpdate(message) {
       }));
     }
   });
-}
+    }
