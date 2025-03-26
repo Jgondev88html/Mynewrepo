@@ -1,14 +1,12 @@
-require('dotenv').config();
 const express = require('express');
 const { IgApiClient } = require('instagram-private-api');
 const WebSocket = require('ws');
 const cors = require('cors');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Configuración CORS para permitir cualquier origen
+// Configuración CORS (acepta cualquier origen)
 app.use(cors());
 app.use(express.json());
 
@@ -23,10 +21,7 @@ const server = app.listen(PORT, () => {
 });
 
 // WebSocket Server
-const wss = new WebSocket.Server({ 
-  server,
-  path: '/ws'
-});
+const wss = new WebSocket.Server({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   console.log('🔌 Nueva conexión WebSocket');
@@ -36,11 +31,11 @@ wss.on('connection', (ws) => {
       const { type, username } = JSON.parse(message);
       if (type === 'auth' && username) {
         activeSockets[username] = ws;
-        console.log(`🔑 Autenticado: ${username}`);
+        console.log(`🔑 Usuario autenticado en WS: ${username}`);
         sendInitialData(username);
       }
     } catch (error) {
-      console.error('❌ Error WS:', error);
+      console.error('❌ Error en WebSocket:', error);
     }
   });
 
@@ -49,20 +44,31 @@ wss.on('connection', (ws) => {
   });
 });
 
-// API Endpoints
+// Endpoint de Login
 app.post('/api/login', async (req, res) => {
   const { username, password, challengeCode } = req.body;
+
+  // Validación básica
+  if (!username || !password) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'Usuario y contraseña son requeridos.' 
+    });
+  }
 
   try {
     ig.state.generateDevice(username);
 
+    // Manejo de código de verificación (2FA)
     if (challengeCode) {
       await handleChallengeCode(username, challengeCode);
     }
 
+    // Login en Instagram
     await ig.account.login(username, password);
     const user = await getUserData(username);
 
+    // Respuesta exitosa
     res.json({
       success: true,
       user: {
@@ -77,20 +83,30 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Endpoint para iniciar campaña
 app.post('/api/start-campaign', async (req, res) => {
   try {
-    // Lógica de campaña aquí
-    broadcastUpdate('Campaña iniciada');
-    res.json({ success: true, message: '🚀 Campaña iniciada' });
+    // Simulación de campaña (aquí iría tu lógica real)
+    broadcastUpdate('¡Campaña iniciada! Nuevos seguidores en camino...');
+    
+    res.json({ 
+      success: true, 
+      message: '🚀 Campaña de crecimiento iniciada con éxito.' 
+    });
+
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Error al iniciar la campaña.' 
+    });
   }
 });
 
-// Helpers
+// --- Funciones de apoyo ---
+
 async function handleChallengeCode(username, code) {
   const session = userSessions[username];
-  if (!session?.challenge) throw new Error('No active challenge');
+  if (!session?.challenge) throw new Error('No hay un desafío activo.');
   await ig.challenge.sendSecurityCode(code);
   delete userSessions[username].challenge;
 }
@@ -105,26 +121,47 @@ async function getUserData(username) {
 }
 
 function handleLoginError(error, username, res) {
+  console.error('⚠️ Error en login:', error);
+
+  // Error de verificación (2FA)
   if (error.name === 'IgCheckpointError') {
     return initiateChallenge(username, res);
   }
-  console.error('⚠️ Login Error:', error);
+
+  // Errores conocidos de Instagram
+  const errorMessages = {
+    'The password you entered is incorrect.': 'Contraseña incorrecta.',
+    'The username you entered doesn\'t belong to an account.': 'Usuario no encontrado.',
+    'Challenge required.': 'Instagram requiere verificación adicional.'
+  };
+
+  const message = errorMessages[error.message] || 
+                  error.message || 
+                  'Error al conectar con Instagram. Intenta nuevamente.';
+
   res.status(400).json({ 
     success: false,
-    message: error.message || 'Error de autenticación'
+    message 
   });
 }
 
 async function initiateChallenge(username, res) {
-  const challenge = await ig.challenge.auto(true);
-  userSessions[username] = { challenge, challengeType: challenge.type };
-  
-  res.json({
-    success: false,
-    challengeRequired: true,
-    challengeType: challenge.type,
-    message: '🔒 Verificación requerida'
-  });
+  try {
+    const challenge = await ig.challenge.auto(true);
+    userSessions[username] = { challenge, challengeType: challenge.type };
+    
+    res.json({
+      success: false,
+      challengeRequired: true,
+      challengeType: challenge.type,
+      message: '🔒 Instagram requiere verificación. Revisa tu email/teléfono.'
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: 'No se pudo iniciar el desafío de seguridad.'
+    });
+  }
 }
 
 function sendInitialData(username) {
@@ -132,7 +169,10 @@ function sendInitialData(username) {
     const ws = activeSockets[username];
     ws.send(JSON.stringify({
       type: 'init',
-      data: userSessions[username]
+      data: {
+        message: `Bienvenido, ${username}!`,
+        followers: userSessions[username].followersCount || 0
+      }
     }));
   }
 }
@@ -146,4 +186,4 @@ function broadcastUpdate(message) {
       }));
     }
   });
-    }
+}
