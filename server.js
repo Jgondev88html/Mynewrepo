@@ -1,88 +1,106 @@
-// server.js
-const express = require('express');
+require('dotenv').config();
 const WebSocket = require('ws');
-const { IgApiClient } = require('instagram-private-api');
+const { IgApiClient, IgCheckpointError } = require('instagram-private-api');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const wss = new WebSocket.Server({ port: 3000 });
+const ig = new IgApiClient();
 
-// Configuración de Express
-app.use(express.static('public'));
-app.use(express.json());
+// Configurar dispositivo (necesario para la API)
+ig.state.generateDevice(process.env.IG_USERNAME);
 
-// Ruta para la verificación de Instagram
-app.post('/api/verify', async (req, res) => {
-    const { username, password, code } = req.body;
-    
-    try {
-        const ig = new IgApiClient();
-        ig.state.generateDevice(username);
-        
-        // Autenticación
-        await ig.account.login(username, password);
-        
-        // Si hay código de 2FA
-        if (code) {
-            await ig.account.twoFactorLogin({ 
-                username,
-                verificationCode: code,
-                trustThisDevice: '1',
-                verificationMethod: '1'
-            });
+wss.on('connection', (ws) => {
+    console.log('✅ Cliente conectado');
+
+    ws.on('message', async (message) => {
+        try {
+            const data = JSON.parse(message);
+            console.log('📩 Mensaje recibido:', data.type);
+
+            switch (data.type) {
+                case 'login':
+                    await handleLogin(ws, data);
+                    break;
+
+                case 'submit_verification_code':
+                    await handleVerification(ws, data);
+                    break;
+
+                case 'follow_user':
+                    await handleFollow(ws, data);
+                    break;
+
+                default:
+                    ws.send(JSON.stringify({ error: 'Acción no válida' }));
+            }
+        } catch (error) {
+            console.error('❌ Error:', error);
+            ws.send(JSON.stringify({ error: error.message }));
         }
-        
-        // Obtener información del usuario
+    });
+});
+
+// 🔐 Manejar inicio de sesión
+async function handleLogin(ws, data) {
+    try {
+        await ig.account.login(data.username, data.password);
+
+        // Si el login es exitoso
         const user = await ig.account.currentUser();
-        
-        res.json({
-            success: true,
+        ws.send(JSON.stringify({
+            type: 'login_success',
             user: {
                 username: user.username,
                 fullName: user.full_name,
                 profilePic: user.profile_pic_url,
                 followers: user.follower_count,
-                following: user.following_count
             }
-        });
+        }));
+
     } catch (error) {
-        console.error('Error verifying Instagram account:', error);
-        res.status(400).json({
-            success: false,
-            message: error.message
-        });
-    }
-});
-
-// Iniciar servidor HTTP
-const server = app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-
-// Configurar WebSocket
-const wss = new WebSocket.Server({ server });
-
-wss.on('connection', (ws) => {
-    console.log('New client connected');
-    
-    // Enviar actualizaciones periódicas de seguidores
-    const interval = setInterval(() => {
-        // Simular nuevos seguidores
-        const newFollowers = Math.floor(Math.random() * 5);
-        if (newFollowers > 0) {
+        if (error instanceof IgCheckpointError) {
+            // Instagram pide verificación (2FA o email/SMS)
             ws.send(JSON.stringify({
-                type: 'new_followers',
-                count: newFollowers,
-                message: `¡Tienes ${newFollowers} nuevos seguidores!`
+                type: 'verification_required',
+                message: 'Instagram requiere verificación',
+                checkpointUrl: error.checkpoint_url,
             }));
+        } else {
+            ws.send(JSON.stringify({ error: error.message }));
         }
-    }, 30000);
-    
-    ws.on('close', () => {
-        console.log('Client disconnected');
-        clearInterval(interval);
-    });
-    
-    ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
-    });
-});
+    }
+}
+
+// 🔑 Manejar código de verificación (2FA/Checkpoint)
+async function handleVerification(ws, data) {
+    try {
+        // Enviar el código de verificación a Instagram
+        await ig.challenge.sendSecurityCode(data.code);
+
+        // Si la verificación es exitosa
+        ws.send(JSON.stringify({
+            type: 'verification_success',
+            message: '¡Cuenta verificada!',
+        }));
+
+    } catch (error) {
+        ws.send(JSON.stringify({ error: 'Código incorrecto' }));
+    }
+}
+
+// ➕ Seguir a un usuario
+async function handleFollow(ws, data) {
+    try {
+        const userId = await ig.user.getIdByUsername(data.targetUsername);
+        await ig.friendship.create(userId);  // ¡Seguir al usuario!
+
+        ws.send(JSON.stringify({
+            type: 'follow_success',
+            targetUsername: data.targetUsername,
+        }));
+
+    } catch (error) {
+        ws.send(JSON.stringify({ error: 'No se pudo seguir al usuario' }));
+    }
+}
+
+console.log('🚀 Servidor WebSocket en ws://localhost:3000');
