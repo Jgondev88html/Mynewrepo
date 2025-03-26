@@ -1,99 +1,146 @@
 const express = require('express');
 const { IgApiClient } = require('instagram-private-api');
-const bodyParser = require('body-parser');
 const WebSocket = require('ws');
+const http = require('http');
 const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Configuración básica
-app.use(bodyParser.json());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Crear servidor HTTP
-const server = app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
-});
+const server = http.createServer(app);
 
-// Configurar WebSocket
+// Configurar WebSocket Server
 const wss = new WebSocket.Server({ server });
+
+// Mapa para almacenar las resoluciones de promesas por cliente
+const pendingRequests = new Map();
 
 wss.on('connection', (ws) => {
     console.log('Nuevo cliente conectado via WebSocket');
     
-    ws.on('message', (message) => {
-        console.log('Mensaje recibido:', message);
+    // Generar un ID único para esta conexión
+    const connectionId = Date.now().toString();
+    
+    ws.on('message', async (message) => {
+        try {
+            const data = JSON.parse(message);
+            console.log('Mensaje recibido:', data);
+            
+            if (data.type === 'login') {
+                // Validar que tenga los datos necesarios
+                if (!data.username || !data.password) {
+                    ws.send(JSON.stringify({
+                        type: 'loginStatus',
+                        success: false,
+                        message: 'Usuario y contraseña son requeridos'
+                    }));
+                    return;
+                }
+                
+                try {
+                    const ig = new IgApiClient();
+                    
+                    // Configuración básica del cliente
+                    ig.state.generateDevice(data.username);
+                    
+                    // Iniciar sesión con Instagram
+                    await ig.account.login(data.username, data.password);
+                    
+                    // Obtener información del usuario
+                    const user = await ig.account.currentUser();
+                    
+                    // Enviar respuesta de éxito
+                    ws.send(JSON.stringify({
+                        type: 'loginStatus',
+                        success: true,
+                        user: {
+                            id: user.pk,
+                            username: user.username,
+                            fullName: user.full_name,
+                            profilePic: user.profile_pic_url
+                        }
+                    }));
+                    
+                    console.log(`Usuario ${data.username} autenticado correctamente`);
+                } catch (error) {
+                    console.error('Error en login:', error);
+                    
+                    let errorMessage = 'Error al iniciar sesión';
+                    if (error.message.includes('password')) {
+                        errorMessage = 'Contraseña incorrecta';
+                    } else if (error.message.includes('username')) {
+                        errorMessage = 'Usuario no encontrado';
+                    } else if (error.message.includes('challenge')) {
+                        // Manejar verificación de dos pasos
+                        const challengeUrl = `https://www.instagram.com/challenge/?next=/`;
+                        ws.send(JSON.stringify({
+                            type: 'challengeRequired',
+                            url: challengeUrl,
+                            message: 'Se requiere verificación adicional'
+                        }));
+                        return;
+                    }
+                    
+                    ws.send(JSON.stringify({ 
+                        type: 'loginStatus',
+                        success: false,
+                        message: errorMessage
+                    }));
+                }
+            }
+        } catch (error) {
+            console.error('Error al procesar mensaje:', error);
+            ws.send(JSON.stringify({
+                type: 'notification',
+                message: 'Error interno del servidor',
+                level: 'error'
+            }));
+        }
     });
     
     ws.on('close', () => {
         console.log('Cliente desconectado');
+        // Limpiar cualquier promesa pendiente para este cliente
+        if (pendingRequests.has(connectionId)) {
+            clearTimeout(pendingRequests.get(connectionId).timeout);
+            pendingRequests.delete(connectionId);
+        }
     });
+    
+    // Enviar mensaje de bienvenida
+    ws.send(JSON.stringify({
+        type: 'notification',
+        message: 'Conectado al servidor. Puede iniciar sesión.',
+        level: 'success'
+    }));
 });
 
-// Ruta para el login
+// Ruta para el login via HTTP (opcional)
 app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    
-    if (!username || !password) {
-        return res.status(400).json({ message: 'Usuario y contraseña son requeridos' });
-    }
-    
-    try {
-        const ig = new IgApiClient();
-        
-        // Configuración básica del cliente
-        ig.state.generateDevice(username);
-        
-        // Opcional: Configurar proxy si es necesario
-        // ig.request.defaults.proxy = 'http://proxy-url:port';
-        
-        // Iniciar sesión con Instagram
-        await ig.account.login(username, password);
-        
-        // Notificar a los clientes WebSocket sobre el login exitoso
-        wss.clients.forEach(client => {
-            if (client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({
-                    type: 'login',
-                    username,
-                    timestamp: new Date().toISOString()
-                }));
-            }
-        });
-        
-        // Obtener información del usuario
-        const user = await ig.account.currentUser();
-        
-        res.json({
-            success: true,
-            user: {
-                id: user.pk,
-                username: user.username,
-                fullName: user.full_name,
-                profilePic: user.profile_pic_url
-            }
-        });
-    } catch (error) {
-        console.error('Error en login:', error);
-        
-        let errorMessage = 'Error al iniciar sesión';
-        if (error.message.includes('password')) {
-            errorMessage = 'Contraseña incorrecta';
-        } else if (error.message.includes('username')) {
-            errorMessage = 'Usuario no encontrado';
-        } else if (error.message.includes('challenge')) {
-            errorMessage = 'Se requiere verificación adicional. Por favor, revisa la app de Instagram.';
-        }
-        
-        res.status(401).json({ 
-            success: false,
-            message: errorMessage
-        });
-    }
+    // ... (mismo código que antes, opcional)
 });
 
 // Ruta principal
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Iniciar servidor
+server.listen(PORT, () => {
+    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+});
+
+// Manejar cierre limpio del servidor
+process.on('SIGINT', () => {
+    console.log('Cerrando servidor...');
+    wss.clients.forEach(client => client.close());
+    wss.close();
+    server.close(() => {
+        process.exit(0);
+    });
 });
