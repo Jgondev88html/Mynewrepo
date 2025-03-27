@@ -51,7 +51,7 @@ const generateWalletId = (clientId) => {
     throw new Error("clientId es requerido para generar el Wallet ID");
   }
   const now = new Date();
-  return `VC-${now.getFullYear()}-W${getWeekNumber(now)}-${clientId.slice(-8).toUpperCase()}`;
+  return `VC-${now.getFullYear()}-W${getWeekNumber(now)}-${clientId.substring(clientId.length - 8).toUpperCase()}`;
 };
 
 const generateTransactionId = () => {
@@ -88,6 +88,7 @@ wss.on('connection', (ws) => {
   // Manejo del cierre de la conexión
   ws.on('close', (code, reason) => {
     console.log(`Conexión cerrada: código ${code}, motivo: ${reason}`);
+    // Aquí podrías intentar reconectar si lo deseas
   });
 
   ws.on('message', async (message) => {
@@ -131,6 +132,7 @@ wss.on('connection', (ws) => {
             else resolve(row);
           });
         });
+
         const receiver = await new Promise((resolve, reject) => {
           db.get("SELECT * FROM wallets WHERE walletId = ?", [data.receiverId], (err, row) => {
             if (err) reject(err);
@@ -138,8 +140,15 @@ wss.on('connection', (ws) => {
           });
         });
 
-        if (!sender || !receiver) throw new Error("Billetera no encontrada");
-        if (sender.balance < data.amount) throw new Error("Saldo insuficiente");
+        if (!sender || !receiver) {
+          ws.send(JSON.stringify({ action: 'error', message: "Billetera no encontrada" }));
+          return;
+        }
+
+        if (sender.balance < data.amount) {
+          ws.send(JSON.stringify({ action: 'error', message: "Saldo insuficiente" }));
+          return;
+        }
 
         const senderNewBalance = sender.balance - data.amount;
         const receiverNewBalance = receiver.balance + data.amount;
@@ -188,7 +197,8 @@ wss.on('connection', (ws) => {
         });
       }
     } catch (error) {
-      ws.send(JSON.stringify({ action: 'error', message: error.message }));
+      console.error("Error handling message:", error);
+      ws.send(JSON.stringify({ action: 'error', message: "Ocurrió un error procesando el mensaje." }));
     }
   });
 });
