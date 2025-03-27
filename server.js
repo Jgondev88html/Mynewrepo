@@ -5,7 +5,7 @@ const path = require('path');
 // Configuración
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'wallets.db');
-const INITIAL_BALANCE = 100000000000;
+const INITIAL_BALANCE = 0;
 
 // Inicializar la base de datos
 const db = new sqlite3.Database(DB_FILE, (err) => {
