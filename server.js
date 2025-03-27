@@ -1,13 +1,11 @@
 const WebSocket = require('ws');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const crypto = require('crypto');
 
 // Configuración
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'wallets.db');
-const INITIAL_BALANCE = 100;
-const DAILY_REWARD = 5;
+const INITIAL_BALANCE = 0;
 
 // Inicializar la base de datos
 const db = new sqlite3.Database(DB_FILE, (err) => {
@@ -26,9 +24,8 @@ db.serialize(() => {
     clientId TEXT UNIQUE,
     balance REAL,
     createdAt TEXT,
-    lastRewardDate TEXT,
-    deviceHash TEXT,
-    ipHash TEXT
+    week INTEGER,
+    year INTEGER
   )`);
   
   db.run(`CREATE TABLE IF NOT EXISTS transactions (
@@ -40,13 +37,6 @@ db.serialize(() => {
     date TEXT,
     relatedWalletId TEXT,
     newBalance REAL
-  )`);
-  
-  db.run(`CREATE TABLE IF NOT EXISTS banned_hashes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hash TEXT UNIQUE,
-    reason TEXT,
-    bannedAt TEXT
   )`);
 });
 
@@ -68,19 +58,6 @@ const generateTransactionId = () => {
   return `TX-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
 };
 
-const hashData = (data) => {
-  return crypto.createHash('sha256').update(data).digest('hex');
-};
-
-const checkIfBanned = async (deviceHash, ipHash) => {
-  return new Promise((resolve, reject) => {
-    db.get("SELECT * FROM banned_hashes WHERE hash = ? OR hash = ?", [deviceHash, ipHash], (err, row) => {
-      if (err) reject(err);
-      else resolve(!!row);
-    });
-  });
-};
-
 const updateWallets = async () => {
   const wallets = await new Promise((resolve, reject) => {
     db.all("SELECT * FROM wallets", [], (err, rows) => {
@@ -88,6 +65,7 @@ const updateWallets = async () => {
       else resolve(rows);
     });
   });
+  // Enviar actualización a todos los clientes conectados
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(JSON.stringify({ action: 'wallets-update', wallets }));
@@ -98,18 +76,19 @@ const updateWallets = async () => {
 // Servidor WebSocket
 const wss = new WebSocket.Server({ port: PORT });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', (ws) => {
   console.log('🔌 Nueva conexión');
   let clientId = null;
-  const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  const ipHash = hashData(ip);
 
+  // Manejo de errores del WebSocket
   ws.on('error', (error) => {
     console.error('Error en WebSocket:', error.message);
   });
 
+  // Manejo del cierre de la conexión
   ws.on('close', (code, reason) => {
     console.log(`Conexión cerrada: código ${code}, motivo: ${reason}`);
+    // Aquí podrías intentar reconectar si lo deseas
   });
 
   ws.on('message', async (message) => {
@@ -117,69 +96,32 @@ wss.on('connection', (ws, req) => {
       const data = JSON.parse(message);
 
       if (data.action === 'init') {
-        if (!data.clientId || !data.deviceId) {
-          ws.send(JSON.stringify({ action: 'error', message: "Se requieren clientId y deviceId" }));
+        if (!data.clientId) {
+          ws.send(JSON.stringify({ action: 'error', message: "clientId no proporcionado" }));
           return;
         }
-        
-        const deviceHash = hashData(data.deviceId);
-        const isBanned = await checkIfBanned(deviceHash, ipHash);
-        
-        if (isBanned) {
-          ws.send(JSON.stringify({ action: 'error', message: "Acceso denegado. Cuenta suspendida." }));
-          ws.close();
-          return;
-        }
-        
         clientId = data.clientId;
-        
-        const existingWallet = await new Promise((resolve, reject) => {
-          db.get("SELECT * FROM wallets WHERE deviceHash = ?", [deviceHash], (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-          });
-        });
-        
-        if (existingWallet && existingWallet.clientId !== clientId) {
-          ws.send(JSON.stringify({ action: 'error', message: "Dispositivo ya registrado con otra cuenta" }));
-          ws.close();
-          return;
-        }
-        
         let wallet = await new Promise((resolve, reject) => {
           db.get("SELECT * FROM wallets WHERE clientId = ?", [clientId], (err, row) => {
             if (err) reject(err);
             else resolve(row);
           });
         });
-        
         if (!wallet) {
           const walletId = generateWalletId(clientId);
           const now = new Date().toISOString();
-          
+          const week = getWeekNumber(new Date());
+          const year = new Date().getFullYear();
           await new Promise((resolve, reject) => {
-            db.run(`INSERT INTO wallets 
-              (walletId, clientId, balance, createdAt, lastRewardDate, deviceHash, ipHash) 
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              [walletId, clientId, INITIAL_BALANCE, now, null, deviceHash, ipHash], 
-              function(err) {
+            db.run("INSERT INTO wallets (walletId, clientId, balance, createdAt, week, year) VALUES (?, ?, ?, ?, ?, ?)",
+              [walletId, clientId, INITIAL_BALANCE, now, week, year], function(err) {
                 if (err) reject(err);
                 else resolve();
               });
           });
-          
-          wallet = { 
-            walletId, 
-            clientId, 
-            balance: INITIAL_BALANCE, 
-            createdAt: now,
-            deviceHash,
-            ipHash
-          };
+          wallet = { walletId, clientId, balance: INITIAL_BALANCE, createdAt: now, week, year };
         }
-        
         ws.walletId = wallet.walletId;
-        ws.deviceHash = wallet.deviceHash;
         ws.send(JSON.stringify({ action: 'wallet-info', ...wallet }));
       }
 
@@ -253,56 +195,6 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({ action: 'wallet-history', history: rows }));
           }
         });
-      }
-
-      if (data.action === 'claim-daily') {
-        if (!ws.walletId || !ws.deviceHash) {
-          ws.send(JSON.stringify({ action: 'error', message: "Debes iniciar sesión primero" }));
-          return;
-        }
-        
-        const today = new Date().toISOString().split('T')[0];
-        const wallet = await new Promise((resolve, reject) => {
-          db.get("SELECT * FROM wallets WHERE walletId = ?", [ws.walletId], (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-          });
-        });
-        
-        if (wallet.lastRewardDate === today) {
-          ws.send(JSON.stringify({ action: 'error', message: "Ya reclamaste tu recompensa diaria hoy" }));
-          return;
-        }
-        
-        const newBalance = wallet.balance + DAILY_REWARD;
-        const transactionId = generateTransactionId();
-        const now = new Date().toISOString();
-        
-        await new Promise((resolve, reject) => {
-          db.run("UPDATE wallets SET balance = ?, lastRewardDate = ? WHERE walletId = ?",
-            [newBalance, today, ws.walletId], (err) => {
-              if (err) reject(err);
-              else resolve();
-            });
-        });
-        
-        await new Promise((resolve, reject) => {
-          db.run(`INSERT INTO transactions 
-            (transactionId, walletId, direction, amount, date, relatedWalletId, newBalance) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [transactionId, ws.walletId, 'in', DAILY_REWARD, now, 'DAILY_REWARD', newBalance],
-            (err) => { if (err) reject(err); else resolve(); }
-          );
-        });
-        
-        ws.send(JSON.stringify({ 
-          action: 'daily-reward', 
-          amount: DAILY_REWARD,
-          newBalance,
-          message: `¡Recompensa diaria de ${DAILY_REWARD} monedas recibida!`
-        }));
-        
-        await updateWallets();
       }
     } catch (error) {
       console.error("Error handling message:", error);
