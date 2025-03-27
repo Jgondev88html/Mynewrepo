@@ -80,11 +80,20 @@ wss.on('connection', (ws) => {
   console.log('🔌 Nueva conexión');
   let clientId = null;
 
+  // Manejo de errores del WebSocket
+  ws.on('error', (error) => {
+    console.error('Error en WebSocket:', error.message);
+  });
+
+  // Manejo del cierre de la conexión
+  ws.on('close', (code, reason) => {
+    console.log(`Conexión cerrada: código ${code}, motivo: ${reason}`);
+  });
+
   ws.on('message', async (message) => {
     try {
       const data = JSON.parse(message);
 
-      // Inicialización del cliente
       if (data.action === 'init') {
         if (!data.clientId) {
           ws.send(JSON.stringify({ action: 'error', message: "clientId no proporcionado" }));
@@ -111,23 +120,10 @@ wss.on('connection', (ws) => {
           });
           wallet = { walletId, clientId, balance: INITIAL_BALANCE, createdAt: now, week, year };
         }
-        // Almacenar walletId en la conexión para usar en el historial
         ws.walletId = wallet.walletId;
         ws.send(JSON.stringify({ action: 'wallet-info', ...wallet }));
       }
 
-      // Solicitar información actualizada de la billetera
-      if (data.action === 'get-wallet-info' && clientId) {
-        const wallet = await new Promise((resolve, reject) => {
-          db.get("SELECT * FROM wallets WHERE clientId = ?", [clientId], (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-          });
-        });
-        ws.send(JSON.stringify({ action: 'wallet-info', ...wallet }));
-      }
-
-      // Transferencia
       if (data.action === 'transfer' && clientId) {
         const sender = await new Promise((resolve, reject) => {
           db.get("SELECT * FROM wallets WHERE clientId = ?", [clientId], (err, row) => {
@@ -148,14 +144,13 @@ wss.on('connection', (ws) => {
         const senderNewBalance = sender.balance - data.amount;
         const receiverNewBalance = receiver.balance + data.amount;
 
-        // Actualizar saldo del emisor
         await new Promise((resolve, reject) => {
           db.run("UPDATE wallets SET balance = ? WHERE walletId = ?", [senderNewBalance, sender.walletId], (err) => {
             if (err) reject(err);
             else resolve();
           });
         });
-        // Actualizar saldo del receptor
+
         await new Promise((resolve, reject) => {
           db.run("UPDATE wallets SET balance = ? WHERE walletId = ?", [receiverNewBalance, receiver.walletId], (err) => {
             if (err) reject(err);
@@ -165,14 +160,14 @@ wss.on('connection', (ws) => {
 
         const transactionId = generateTransactionId();
         const now = new Date().toISOString();
-        // Guardar transacción de salida para el emisor
+
         await new Promise((resolve, reject) => {
           db.run("INSERT INTO transactions (transactionId, walletId, direction, amount, date, relatedWalletId, newBalance) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [transactionId, sender.walletId, 'out', data.amount, now, receiver.walletId, senderNewBalance],
             (err) => { if (err) reject(err); else resolve(); }
           );
         });
-        // Guardar transacción de entrada para el receptor
+
         await new Promise((resolve, reject) => {
           db.run("INSERT INTO transactions (transactionId, walletId, direction, amount, date, relatedWalletId, newBalance) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [generateTransactionId(), receiver.walletId, 'in', data.amount, now, sender.walletId, receiverNewBalance],
@@ -180,11 +175,9 @@ wss.on('connection', (ws) => {
           );
         });
 
-        // Enviar actualización a todos los clientes
         await updateWallets();
       }
 
-      // Solicitud de historial de transacciones
       if (data.action === 'get-history' && ws.walletId) {
         db.all("SELECT * FROM transactions WHERE walletId = ? OR relatedWalletId = ? ORDER BY date DESC", [ws.walletId, ws.walletId], (err, rows) => {
           if (err) {
