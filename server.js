@@ -2,12 +2,12 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 
-// Configuración
-const PORT = 3000;
+// Configuración optimizada
+const PORT = process.env.PORT || 3000; // Usa el puerto de Render si existe
 const WALLET_FILE = path.join(__dirname, 'wallets.json');
 const INITIAL_BALANCE = 100;
 
-// Helpers
+// Helpers (sin cambios)
 const getWeekNumber = (date) => {
     const firstDay = new Date(date.getFullYear(), 0, 1);
     return Math.ceil((((date - firstDay) / 86400000) + firstDay.getDay() + 1) / 7);
@@ -18,41 +18,44 @@ const generateWalletId = (clientId) => {
     return `VC-${now.getFullYear()}-W${getWeekNumber(now)}-${clientId.slice(-8).toUpperCase()}`;
 };
 
-// Manejo de archivos
+// Manejo de archivos MEJORADO
 const readWallets = () => {
     try {
         if (!fs.existsSync(WALLET_FILE)) {
-            fs.writeFileSync(WALLET_FILE, JSON.stringify([]));
+            fs.writeFileSync(WALLET_FILE, '[]', 'utf-8'); // Crea el archivo vacío
+            return [];
         }
-        return JSON.parse(fs.readFileSync(WALLET_FILE));
+        const data = fs.readFileSync(WALLET_FILE, 'utf-8');
+        return JSON.parse(data || '[]'); // Evita errores si el archivo está corrupto
     } catch (error) {
-        console.error("Error reading wallets:", error);
-        return [];
+        console.error("Error leyendo wallets:", error);
+        return []; // Retorna array vacío para evitar caídas
     }
 };
 
 const saveWallets = (wallets) => {
     try {
-        fs.writeFileSync(WALLET_FILE, JSON.stringify(wallets, null, 2));
+        fs.writeFileSync(WALLET_FILE, JSON.stringify(wallets, null, 2), 'utf-8');
+        console.log("✅ Wallets guardados correctamente"); // Log para debug
         return true;
     } catch (error) {
-        console.error("Error saving wallets:", error);
+        console.error("🚨 Error GUARDANDO wallets:", error);
         return false;
     }
 };
 
-// Servidor WebSocket
+// Servidor WebSocket (optimizado)
 const wss = new WebSocket.Server({ port: PORT });
 
 wss.on('connection', (ws) => {
-    console.log('Nueva conexión');
+    console.log('🔌 Nueva conexión');
     let clientId = null;
 
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
         try {
             const data = JSON.parse(message);
 
-            // Inicialización
+            // Inicialización (con guardado automático)
             if (data.action === 'init') {
                 clientId = data.clientId;
                 const wallets = readWallets();
@@ -68,7 +71,7 @@ wss.on('connection', (ws) => {
                         year: new Date().getFullYear()
                     };
                     wallets.push(wallet);
-                    saveWallets(wallets);
+                    if (!saveWallets(wallets)) throw new Error("Error al crear wallet");
                 }
 
                 ws.send(JSON.stringify({
@@ -80,7 +83,7 @@ wss.on('connection', (ws) => {
                 }));
             }
 
-            // Transferencias
+            // Transferencias (con doble validación)
             if (data.action === 'transfer' && clientId) {
                 const wallets = readWallets();
                 const sender = wallets.find(w => w.clientId === clientId);
@@ -93,29 +96,29 @@ wss.on('connection', (ws) => {
                 sender.balance -= data.amount;
                 receiver.balance += data.amount;
 
-                if (saveWallets(wallets)) {
-                    ws.send(JSON.stringify({
-                        action: 'transfer-success',
-                        newBalance: sender.balance,
-                        amount: data.amount
-                    }));
+                if (!saveWallets(wallets)) throw new Error("Error al guardar la transacción");
 
-                    // Notificar al receptor
-                    wss.clients.forEach(client => {
-                        if (client !== ws && client.readyState === WebSocket.OPEN) {
-                            client.send(JSON.stringify({
-                                action: 'transfer-received',
-                                amount: data.amount,
-                                newBalance: receiver.balance,
-                                senderId: sender.walletId
-                            }));
-                        }
-                    });
-                }
+                ws.send(JSON.stringify({
+                    action: 'transfer-success',
+                    newBalance: sender.balance,
+                    amount: data.amount
+                }));
+
+                // Notificar al receptor
+                wss.clients.forEach(client => {
+                    if (client !== ws && client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({
+                            action: 'transfer-received',
+                            amount: data.amount,
+                            newBalance: receiver.balance,
+                            senderId: sender.walletId
+                        }));
+                    }
+                });
             }
 
         } catch (error) {
-            console.error("Error:", error.message);
+            console.error("⛔ Error en mensaje:", error.message);
             ws.send(JSON.stringify({
                 action: 'error',
                 message: error.message
@@ -124,8 +127,8 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        console.log('Conexión cerrada:', clientId);
+        console.log('❌ Conexión cerrada:', clientId);
     });
 });
 
-console.log(`🚀 Servidor iniciado en ws://localhost:${PORT}`);
+console.log(`🚀 Servidor WebSocket en ws://localhost:${PORT}`);
