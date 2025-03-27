@@ -6,8 +6,8 @@ const crypto = require('crypto');
 // Configuración
 const PORT = process.env.PORT || 3000;
 const DB_FILE = path.join(__dirname, 'wallets.db');
-const INITIAL_BALANCE = 0;
-const DAILY_REWARD = 10;
+const INITIAL_BALANCE = 100;
+const DAILY_REWARD = 5;
 
 // Inicializar la base de datos
 const db = new sqlite3.Database(DB_FILE, (err) => {
