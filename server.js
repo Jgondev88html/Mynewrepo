@@ -13,7 +13,7 @@ const PORT = 3000;
 app.use(cors());
 app.use(bodyParser.json());
 
-// Configuración de la base de datos SQLite
+// Configuración de la base de datos SQLite en memoria
 const db = new sqlite3.Database(':memory:');
 
 // Crear tablas en la base de datos
@@ -21,7 +21,7 @@ db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS wallets (
       id TEXT PRIMARY KEY,
-      balance REAL DEFAULT 0
+      balance REAL DEFAULT 100
     )
   `);
   db.run(`
@@ -44,20 +44,16 @@ const wss = new WebSocket.Server({ server });
 // Almacén de conexiones WebSocket
 const clients = new Map();
 
-// Manejador de conexiones WebSocket
+// Manejo de conexiones WebSocket
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado.');
-
-  // Asignar un ID único al cliente
   const clientId = uuidv4();
   clients.set(clientId, ws);
 
-  // Manejar mensajes entrantes del cliente
   ws.on('message', (message) => {
     console.log(`Mensaje recibido del cliente ${clientId}:`, message);
   });
 
-  // Manejar cierre de conexión
   ws.on('close', () => {
     console.log(`Cliente ${clientId} desconectado.`);
     clients.delete(clientId);
@@ -75,10 +71,10 @@ const broadcast = (message) => {
 
 // Rutas
 
-// Crear una nueva wallet
+// Crear una nueva wallet (inicializada con 100 VNC si no se especifica otro balance)
 app.post('/api/wallets', (req, res) => {
   const walletId = `VNC_${uuidv4()}`;
-  const initialBalance = req.body.balance || 0;
+  const initialBalance = req.body.balance !== undefined ? req.body.balance : 100;
 
   db.run(
     'INSERT INTO wallets (id, balance) VALUES (?, ?)',
@@ -97,7 +93,6 @@ app.post('/api/wallets', (req, res) => {
 // Obtener el balance de una wallet
 app.get('/api/wallets/:id', (req, res) => {
   const walletId = req.params.id;
-
   db.get('SELECT id, balance FROM wallets WHERE id = ?', [walletId], (err, row) => {
     if (err) {
       console.error(err);
@@ -113,7 +108,6 @@ app.get('/api/wallets/:id', (req, res) => {
 // Realizar una transferencia
 app.post('/api/transactions', (req, res) => {
   const { sender_id, receiver_id, amount } = req.body;
-
   if (!sender_id || !receiver_id || amount <= 0) {
     return res.status(400).json({ message: 'Datos inválidos' });
   }
@@ -123,33 +117,38 @@ app.post('/api/transactions', (req, res) => {
       if (err || !sender) {
         return res.status(404).json({ message: 'Wallet del remitente no encontrada' });
       }
-
       if (sender.balance < amount) {
         return res.status(400).json({ message: 'Fondos insuficientes' });
       }
 
+      // Actualizar balance del remitente
       db.run('UPDATE wallets SET balance = balance - ? WHERE id = ?', [amount, sender_id]);
-      db.run('UPDATE wallets SET balance = balance + ? WHERE id = ?', [amount, receiver_id]);
-      db.run(
-        'INSERT INTO transactions (sender_id, receiver_id, amount) VALUES (?, ?, ?)',
-        [sender_id, receiver_id, amount],
-        (err) => {
-          if (err) {
-            console.error(err);
-            res.status(500).json({ message: 'Error al realizar la transacción' });
-          } else {
-            // Enviar actualización a los clientes conectados
-            broadcast({
-              type: 'transaction',
-              sender_id,
-              receiver_id,
-              amount,
-              timestamp: new Date(),
-            });
-            res.status(201).json({ message: 'Transacción realizada con éxito' });
-          }
+      // Actualizar balance del receptor
+      db.run('UPDATE wallets SET balance = balance + ? WHERE id = ?', [amount, receiver_id], function(err) {
+        if (err) {
+          return res.status(404).json({ message: 'Wallet del receptor no encontrada' });
         }
-      );
+        // Registrar la transacción
+        db.run(
+          'INSERT INTO transactions (sender_id, receiver_id, amount) VALUES (?, ?, ?)',
+          [sender_id, receiver_id, amount],
+          (err) => {
+            if (err) {
+              console.error(err);
+              res.status(500).json({ message: 'Error al realizar la transacción' });
+            } else {
+              broadcast({
+                type: 'transaction',
+                sender_id,
+                receiver_id,
+                amount,
+                timestamp: new Date(),
+              });
+              res.status(201).json({ message: 'Transacción realizada con éxito' });
+            }
+          }
+        );
+      });
     });
   });
 });
@@ -157,7 +156,6 @@ app.post('/api/transactions', (req, res) => {
 // Obtener historial de transacciones
 app.get('/api/transactions/:walletId', (req, res) => {
   const walletId = req.params.walletId;
-
   db.all(
     'SELECT * FROM transactions WHERE sender_id = ? OR receiver_id = ? ORDER BY timestamp DESC',
     [walletId, walletId],
@@ -176,3 +174,4 @@ app.get('/api/transactions/:walletId', (req, res) => {
 server.listen(PORT, () => {
   console.log(`Servidor HTTP y WebSocket corriendo en http://localhost:${PORT}`);
 });
+      
