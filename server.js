@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const sqlite3 = require('sqlite3').verbose();
 
-// Iniciamos el servidor WebSocket en el puerto 3000
+// Iniciamos el servidor WebSocket
 const wss = new WebSocket.Server({ port: 3000 }, () => {
   console.log('Servidor WebSocket iniciado en el puerto 3000');
 });
@@ -43,9 +43,15 @@ function generateWalletId() {
   return 'WALLET-' + Math.random().toString(36).substr(2, 9).toUpperCase();
 }
 
+// Almacenar billeteras activas (solo para sesión actual)
+const activeWallets = new Map();
+
 // Manejador de conexiones
 wss.on('connection', (ws) => {
   console.log('Nuevo cliente conectado');
+
+  // Asociar una billetera a esta conexión
+  let currentWalletId = null;
 
   ws.on('message', async (message) => {
     try {
@@ -55,8 +61,16 @@ wss.on('connection', (ws) => {
       switch (action) {
         // Crear una nueva billetera
         case 'create-wallet': {
+          if (currentWalletId) {
+            ws.send(JSON.stringify({
+              action: 'error',
+              message: 'Ya tienes una billetera asociada'
+            }));
+            return;
+          }
+
           const walletId = generateWalletId();
-          const initialBalance = 100; // saldo inicial
+          const initialBalance = 100;
           
           db.run(
             'INSERT INTO wallets (id, balance) VALUES (?, ?)',
@@ -71,6 +85,9 @@ wss.on('connection', (ws) => {
                 return;
               }
               
+              currentWalletId = walletId;
+              activeWallets.set(ws, walletId);
+              
               ws.send(JSON.stringify({
                 action: 'wallet-created',
                 walletId,
@@ -82,101 +99,70 @@ wss.on('connection', (ws) => {
           break;
         }
 
-        // Registrar billetera existente o crear una nueva si no existe
-        case 'register-wallet': {
+        // Conectar con una billetera existente
+        case 'connect-wallet': {
           const walletId = data.walletId;
           
           if (!walletId) {
-            // Si no se proporciona ID, crear nueva
-            const newWalletId = generateWalletId();
-            const initialBalance = 100;
-            
-            db.run(
-              'INSERT INTO wallets (id, balance) VALUES (?, ?)',
-              [newWalletId, initialBalance],
-              function(err) {
-                if (err) {
-                  ws.send(JSON.stringify({
-                    action: 'error',
-                    message: 'Error al crear billetera'
-                  }));
-                  console.error('Error al crear billetera:', err);
-                  return;
-                }
-                
-                ws.send(JSON.stringify({
-                  action: 'wallet-created',
-                  walletId: newWalletId,
-                  balance: initialBalance
-                }));
-                console.log(`Billetera no encontrada. Se creó una nueva: ${newWalletId}`);
-              }
-            );
-          } else {
-            // Verificar si existe la billetera
-            db.get(
-              'SELECT balance FROM wallets WHERE id = ?',
-              [walletId],
-              function(err, row) {
-                if (err) {
-                  ws.send(JSON.stringify({
-                    action: 'error',
-                    message: 'Error al consultar billetera'
-                  }));
-                  console.error('Error al consultar billetera:', err);
-                  return;
-                }
-                
-                if (!row) {
-                  // Billetera no existe, crear nueva
-                  const newWalletId = generateWalletId();
-                  const initialBalance = 100;
-                  
-                  db.run(
-                    'INSERT INTO wallets (id, balance) VALUES (?, ?)',
-                    [newWalletId, initialBalance],
-                    function(err) {
-                      if (err) {
-                        ws.send(JSON.stringify({
-                          action: 'error',
-                          message: 'Error al crear billetera'
-                        }));
-                        console.error('Error al crear billetera:', err);
-                        return;
-                      }
-                      
-                      ws.send(JSON.stringify({
-                        action: 'wallet-created',
-                        walletId: newWalletId,
-                        balance: initialBalance
-                      }));
-                      console.log(`Billetera no encontrada. Se creó una nueva: ${newWalletId}`);
-                    }
-                  );
-                } else {
-                  // Billetera existe
-                  ws.send(JSON.stringify({
-                    action: 'wallet-registered',
-                    walletId,
-                    balance: row.balance
-                  }));
-                  console.log(`Billetera registrada: ${walletId}`);
-                }
-              }
-            );
+            ws.send(JSON.stringify({
+              action: 'error',
+              message: 'Debes proporcionar un ID de billetera'
+            }));
+            return;
           }
+          
+          // Verificar si la billetera existe
+          db.get(
+            'SELECT balance FROM wallets WHERE id = ?',
+            [walletId],
+            function(err, row) {
+              if (err) {
+                ws.send(JSON.stringify({
+                  action: 'error',
+                  message: 'Error al verificar billetera'
+                }));
+                console.error('Error al verificar billetera:', err);
+                return;
+              }
+              
+              if (!row) {
+                ws.send(JSON.stringify({
+                  action: 'error',
+                  message: 'Billetera no encontrada'
+                }));
+                return;
+              }
+              
+              // Asociar esta billetera al cliente
+              currentWalletId = walletId;
+              activeWallets.set(ws, walletId);
+              
+              ws.send(JSON.stringify({
+                action: 'wallet-connected',
+                walletId,
+                balance: row.balance
+              }));
+              console.log(`Billetera conectada: ${walletId}`);
+            }
+          );
           break;
         }
 
-        // Devolver el historial de transacciones de la billetera
+        // Obtener historial de transacciones
         case 'get-transaction-history': {
-          const walletId = data.walletId;
+          if (!currentWalletId) {
+            ws.send(JSON.stringify({
+              action: 'error',
+              message: 'No tienes una billetera conectada'
+            }));
+            return;
+          }
           
           db.all(
             `SELECT * FROM transactions 
              WHERE sender_id = ? OR receiver_id = ? 
              ORDER BY created_at DESC`,
-            [walletId, walletId],
+            [currentWalletId, currentWalletId],
             function(err, rows) {
               if (err) {
                 ws.send(JSON.stringify({
@@ -191,18 +177,26 @@ wss.on('connection', (ws) => {
                 action: 'transaction-history',
                 transactions: rows
               }));
-              console.log(`Historial solicitado para: ${walletId}`);
+              console.log(`Historial solicitado para: ${currentWalletId}`);
             }
           );
           break;
         }
 
-        // Procesar una transacción
+        // Enviar transacción
         case 'send-transaction': {
-          const { senderId, receiverId, amount } = data;
+          if (!currentWalletId) {
+            ws.send(JSON.stringify({
+              action: 'error',
+              message: 'No tienes una billetera conectada'
+            }));
+            return;
+          }
+          
+          const { receiverId, amount } = data;
           
           // Validaciones básicas
-          if (!senderId || !receiverId || !amount || amount <= 0) {
+          if (!receiverId || !amount || amount <= 0) {
             ws.send(JSON.stringify({
               action: 'error',
               message: 'Datos de transacción inválidos'
@@ -210,7 +204,7 @@ wss.on('connection', (ws) => {
             return;
           }
           
-          if (senderId === receiverId) {
+          if (currentWalletId === receiverId) {
             ws.send(JSON.stringify({
               action: 'error',
               message: 'No puedes enviar fondos a ti mismo'
@@ -225,7 +219,7 @@ wss.on('connection', (ws) => {
             // Verificar saldo del remitente
             db.get(
               'SELECT balance FROM wallets WHERE id = ?',
-              [senderId],
+              [currentWalletId],
               function(err, sender) {
                 if (err) {
                   db.run('ROLLBACK');
@@ -234,15 +228,6 @@ wss.on('connection', (ws) => {
                     message: 'Error al verificar saldo'
                   }));
                   console.error('Error al verificar saldo:', err);
-                  return;
-                }
-                
-                if (!sender) {
-                  db.run('ROLLBACK');
-                  ws.send(JSON.stringify({
-                    action: 'error',
-                    message: 'Billetera del remitente no encontrada'
-                  }));
                   return;
                 }
                 
@@ -282,7 +267,7 @@ wss.on('connection', (ws) => {
                     // Actualizar saldos
                     db.run(
                       'UPDATE wallets SET balance = balance - ? WHERE id = ?',
-                      [amount, senderId],
+                      [amount, currentWalletId],
                       function(err) {
                         if (err) {
                           db.run('ROLLBACK');
@@ -313,7 +298,7 @@ wss.on('connection', (ws) => {
                               `INSERT INTO transactions 
                                (sender_id, receiver_id, amount) 
                                VALUES (?, ?, ?)`,
-                              [senderId, receiverId, amount],
+                              [currentWalletId, receiverId, amount],
                               function(err) {
                                 if (err) {
                                   db.run('ROLLBACK');
@@ -330,7 +315,7 @@ wss.on('connection', (ws) => {
                                 // Obtener nuevo saldo para enviar al cliente
                                 db.get(
                                   'SELECT balance FROM wallets WHERE id = ?',
-                                  [senderId],
+                                  [currentWalletId],
                                   function(err, updatedWallet) {
                                     if (err) {
                                       console.error('Error al obtener saldo actualizado:', err);
@@ -341,7 +326,7 @@ wss.on('connection', (ws) => {
                                       action: 'transaction-completed',
                                       newBalance: updatedWallet.balance
                                     }));
-                                    console.log(`Transacción completada: ${senderId} -> ${receiverId} por ${amount} NV`);
+                                    console.log(`Transacción completada: ${currentWalletId} -> ${receiverId} por ${amount} NV`);
                                   }
                                 );
                               }
@@ -355,6 +340,39 @@ wss.on('connection', (ws) => {
               }
             );
           });
+          break;
+        }
+
+        // Verificar saldo
+        case 'get-balance': {
+          if (!currentWalletId) {
+            ws.send(JSON.stringify({
+              action: 'error',
+              message: 'No tienes una billetera conectada'
+            }));
+            return;
+          }
+          
+          db.get(
+            'SELECT balance FROM wallets WHERE id = ?',
+            [currentWalletId],
+            function(err, row) {
+              if (err) {
+                ws.send(JSON.stringify({
+                  action: 'error',
+                  message: 'Error al obtener saldo'
+                }));
+                console.error('Error al obtener saldo:', err);
+                return;
+              }
+              
+              ws.send(JSON.stringify({
+                action: 'balance',
+                walletId: currentWalletId,
+                balance: row.balance
+              }));
+            }
+          );
           break;
         }
 
@@ -377,6 +395,9 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log('Cliente desconectado');
+    if (currentWalletId) {
+      activeWallets.delete(ws);
+    }
   });
 });
 
