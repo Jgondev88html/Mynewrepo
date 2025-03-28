@@ -1,9 +1,11 @@
+// server.js
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { v4: uuidv4 } = require('uuid');
 const WebSocket = require('ws');
+const path = require('path');
 
 // Configuración del servidor
 const app = express();
@@ -13,10 +15,17 @@ const PORT = 3000;
 app.use(cors());
 app.use(bodyParser.json());
 
-// Configuración de la base de datos SQLite en memoria
-const db = new sqlite3.Database(':memory:');
+// Conexión a la base de datos persistente (archivo en disco)
+const dbPath = path.resolve(__dirname, 'database.db');
+const db = new sqlite3.Database(dbPath, (err) => {
+  if (err) {
+    console.error("Error al conectar a la base de datos", err);
+  } else {
+    console.log("Conectado a la base de datos en", dbPath);
+  }
+});
 
-// Crear tablas en la base de datos
+// Crear tablas en la base de datos (si no existen)
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS wallets (
@@ -174,4 +183,3 @@ app.get('/api/transactions/:walletId', (req, res) => {
 server.listen(PORT, () => {
   console.log(`Servidor HTTP y WebSocket corriendo en http://localhost:${PORT}`);
 });
-      
