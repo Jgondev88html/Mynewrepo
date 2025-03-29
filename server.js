@@ -1,157 +1,32 @@
 const WebSocket = require('ws');
-const http = require('http');
 const { v4: uuidv4 } = require('uuid');
 
-const server = http.createServer();
-const wss = new WebSocket.Server({ server });
-const PORT = 3000;
-
+// Configuración directa de WebSocket (sin HTTP)
+const wss = new WebSocket.Server({ port: 3000 });
 const walletsDB = new Map();
 
-wss.on('connection', (ws) => {
-  console.log('Cliente conectado');
-
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log('Mensaje recibido:', data.type);
-
-      switch(data.type) {
-        case 'register':
-          handleRegistration(ws, data);
-          break;
-
-        case 'transfer':
-          handleTransfer(ws, data);
-          break;
-
-        case 'sync':
-          handleSync(ws, data);
-          break;
-
-        default:
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Tipo de operación no válido'
-          }));
-      }
-    } catch (err) {
-      console.error('Error procesando mensaje:', err);
-    }
-  });
-
-  ws.on('close', () => {
-    console.log('Cliente desconectado');
-  });
-});
-
-function handleRegistration(ws, data) {
-  const { userId, balance = 10.0, transactions = [] } = data;
-
-  // Solo crea nuevo wallet si no existe
-  if (!walletsDB.has(userId)) {
-    walletsDB.set(userId, {
-      balance: balance,
-      transactions: transactions.length > 0 ? transactions : [{
-        id: uuidv4(),
-        desc: 'Depósito inicial',
-        amount: 10.0,
-        type: 'receive',
-        date: new Date().toISOString(),
-        status: 'confirmed'
-      }]
-    });
-    console.log(`Nuevo wallet registrado con datos del frontend: ${userId}`);
-  }
-
-  ws.userId = userId;
-  sendWalletData(ws, userId);
-}
-
-function handleTransfer(ws, data) {
-  const { senderId, recipientId, amount, transactionId } = data;
-
-  // Validaciones básicas
-  if (!walletsDB.has(senderId) || !walletsDB.has(recipientId)) {
-    return ws.send(JSON.stringify({
-      type: 'transfer_error',
-      message: 'ID de usuario no válido',
-      transactionId
-    }));
-  }
-
-  const sender = walletsDB.get(senderId);
-  const recipient = walletsDB.get(recipientId);
-
-  if (sender.balance < amount) {
-    return ws.send(JSON.stringify({
-      type: 'transfer_error',
-      message: 'Saldo insuficiente',
-      transactionId
-    }));
-  }
-
-  // Procesar transacción
-  const timestamp = new Date().toISOString();
-  const sendTx = {
-    id: transactionId,
-    desc: `Enviado a ${recipientId}`,
-    amount: amount,
-    type: 'send',
-    date: timestamp,
-    status: 'confirmed'
+// Función para enviar datos del wallet al cliente
+function sendWalletData(ws, userId) {
+  const wallet = walletsDB.get(userId) || { 
+    balance: 10.0, 
+    transactions: [{
+      id: uuidv4(),
+      desc: 'Depósito inicial',
+      amount: 10.0,
+      type: 'receive',
+      date: new Date().toISOString(),
+      status: 'confirmed'
+    }]
   };
-
-  const receiveTx = {
-    id: uuidv4(),
-    desc: `Recibido de ${senderId}`,
-    amount: amount,
-    type: 'receive',
-    date: timestamp,
-    status: 'confirmed'
-  };
-
-  // Actualizar saldos
-  sender.balance -= amount;
-  recipient.balance += amount;
-
-  // Registrar transacciones
-  sender.transactions.push(sendTx);
-  recipient.transactions.push(receiveTx);
-
-  // Notificar a los clientes afectados
-  notifyClients(senderId, recipientId, {
-    sender: { balance: sender.balance, transaction: sendTx },
-    recipient: { balance: recipient.balance, transaction: receiveTx }
-  });
+  
+  ws.send(JSON.stringify({
+    type: 'wallet_data',
+    balance: wallet.balance,
+    transactions: wallet.transactions
+  }));
 }
 
-function handleSync(ws, data) {
-  const { userId, transactions = [] } = data;
-
-  if (!walletsDB.has(userId)) {
-    return ws.send(JSON.stringify({
-      type: 'sync_error',
-      message: 'Wallet no registrado'
-    }));
-  }
-
-  const wallet = walletsDB.get(userId);
-  const newTransactions = transactions.filter(tx =>
-    !wallet.transactions.some(wtx => wtx.id === tx.id)
-  );
-
-  // Fusionar transacciones
-  wallet.transactions = [...wallet.transactions, ...newTransactions];
-
-  // Recalcular balance basado en transacciones
-  wallet.balance = wallet.transactions.reduce((total, tx) => {
-    return tx.type === 'receive' ? total + tx.amount : total - tx.amount;
-  }, 10.0); // Balance inicial
-
-  sendWalletData(ws, userId);
-}
-
+// Notificar a clientes afectados por transferencias
 function notifyClients(senderId, recipientId, data) {
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -172,15 +47,127 @@ function notifyClients(senderId, recipientId, data) {
   });
 }
 
-function sendWalletData(ws, userId) {
-  const wallet = walletsDB.get(userId) || { balance: 10.0, transactions: [] };
-  ws.send(JSON.stringify({
-    type: 'wallet_data',
-    balance: wallet.balance,
-    transactions: wallet.transactions
-  }));
-}
+// Manejo de conexiones WebSocket
+wss.on('connection', (ws) => {
+  console.log('Nuevo cliente conectado');
 
-server.listen(PORT, () => {
-  console.log(`Servidor WebSocket corriendo en ws://localhost:${PORT}`);
+  ws.on('message', (message) => {
+    try {
+      const data = JSON.parse(message);
+      console.log(`Operación solicitada: ${data.type}`);
+
+      switch(data.type) {
+        case 'register':
+          if (!walletsDB.has(data.userId)) {
+            walletsDB.set(data.userId, {
+              balance: data.balance || 10.0,
+              transactions: data.transactions || [{
+                id: uuidv4(),
+                desc: 'Depósito inicial',
+                amount: 10.0,
+                type: 'receive',
+                date: new Date().toISOString(),
+                status: 'confirmed'
+              }]
+            });
+          }
+          ws.userId = data.userId;
+          sendWalletData(ws, data.userId);
+          break;
+
+        case 'transfer':
+          const { senderId, recipientId, amount, transactionId } = data;
+          
+          if (!walletsDB.has(senderId) || !walletsDB.has(recipientId)) {
+            return ws.send(JSON.stringify({
+              type: 'transfer_error',
+              message: 'Usuario no registrado',
+              transactionId
+            }));
+          }
+
+          const sender = walletsDB.get(senderId);
+          const recipient = walletsDB.get(recipientId);
+
+          if (sender.balance < amount) {
+            return ws.send(JSON.stringify({
+              type: 'transfer_error',
+              message: 'Saldo insuficiente',
+              transactionId
+            }));
+          }
+
+          // Procesar transferencia
+          const timestamp = new Date().toISOString();
+          const sendTx = {
+            id: transactionId,
+            desc: `Enviado a ${recipientId}`,
+            amount: amount,
+            type: 'send',
+            date: timestamp,
+            status: 'confirmed'
+          };
+
+          const receiveTx = {
+            id: uuidv4(),
+            desc: `Recibido de ${senderId}`,
+            amount: amount,
+            type: 'receive',
+            date: timestamp,
+            status: 'confirmed'
+          };
+
+          // Actualizar saldos y transacciones
+          sender.balance -= amount;
+          recipient.balance += amount;
+          sender.transactions.push(sendTx);
+          recipient.transactions.push(receiveTx);
+
+          notifyClients(senderId, recipientId, {
+            sender: { balance: sender.balance, transaction: sendTx },
+            recipient: { balance: recipient.balance, transaction: receiveTx }
+          });
+          break;
+
+        case 'sync':
+          if (!walletsDB.has(data.userId)) {
+            return ws.send(JSON.stringify({
+              type: 'sync_error',
+              message: 'Wallet no registrado'
+            }));
+          }
+
+          const wallet = walletsDB.get(data.userId);
+          const newTransactions = data.transactions.filter(tx =>
+            !wallet.transactions.some(wtx => wtx.id === tx.id)
+          );
+
+          wallet.transactions = [...wallet.transactions, ...newTransactions];
+          wallet.balance = wallet.transactions.reduce((total, tx) => {
+            return tx.type === 'receive' ? total + tx.amount : total - tx.amount;
+          }, 10.0);
+
+          sendWalletData(ws, data.userId);
+          break;
+
+        default:
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Operación no válida'
+          }));
+      }
+    } catch (err) {
+      console.error('Error procesando mensaje:', err);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Error en el formato del mensaje'
+      }));
+    }
+  });
+
+  ws.on('close', () => {
+    console.log(`Cliente desconectado: ${ws.userId || 'ID no asignado'}`);
+  });
 });
+
+console.log('🚀 Servidor WebSocket puro iniciado en ws://0.0.0.0:3000');
