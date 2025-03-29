@@ -1,11 +1,10 @@
-
 const WebSocket = require('ws');
 const http = require('http');
 const { v4: uuidv4 } = require('uuid');
 
+const PORT = process.env.PORT || 3000;
 const server = http.createServer();
 const wss = new WebSocket.Server({ server });
-const PORT = 3000;
 
 const walletsDB = new Map();
 
@@ -49,7 +48,7 @@ wss.on('connection', (ws) => {
 function handleRegistration(ws, data) {
   const { userId, balance = 10.0, transactions = [] } = data;
 
-  // Solo crea nuevo wallet si no existe
+  // Si el wallet no existe, se crea con un depósito inicial
   if (!walletsDB.has(userId)) {
     walletsDB.set(userId, {
       balance: balance,
@@ -62,7 +61,7 @@ function handleRegistration(ws, data) {
         status: 'confirmed'
       }]
     });
-    console.log(`Nuevo wallet registrado con datos del frontend: ${userId}`);
+    console.log(`Nuevo wallet registrado: ${userId}`);
   }
 
   ws.userId = userId;
@@ -72,7 +71,7 @@ function handleRegistration(ws, data) {
 function handleTransfer(ws, data) {
   const { senderId, recipientId, amount, transactionId } = data;
 
-  // Validaciones básicas
+  // Validaciones básicas: que ambos wallets existan
   if (!walletsDB.has(senderId) || !walletsDB.has(recipientId)) {
     return ws.send(JSON.stringify({
       type: 'transfer_error',
@@ -92,7 +91,7 @@ function handleTransfer(ws, data) {
     }));
   }
 
-  // Procesar transacción
+  // Procesar la transacción
   const timestamp = new Date().toISOString();
   const sendTx = {
     id: transactionId,
@@ -112,15 +111,13 @@ function handleTransfer(ws, data) {
     status: 'confirmed'
   };
 
-  // Actualizar saldos
+  // Actualizar saldos y registrar transacciones
   sender.balance -= amount;
   recipient.balance += amount;
-
-  // Registrar transacciones
   sender.transactions.push(sendTx);
   recipient.transactions.push(receiveTx);
 
-  // Notificar a los clientes afectados
+  // Notificar a los clientes involucrados
   notifyClients(senderId, recipientId, {
     sender: { balance: sender.balance, transaction: sendTx },
     recipient: { balance: recipient.balance, transaction: receiveTx }
@@ -142,13 +139,11 @@ function handleSync(ws, data) {
     !wallet.transactions.some(wtx => wtx.id === tx.id)
   );
 
-  // Fusionar transacciones
+  // Fusionar transacciones y recalcular el balance partiendo del depósito inicial de 10.0
   wallet.transactions = [...wallet.transactions, ...newTransactions];
-
-  // Recalcular balance basado en transacciones
   wallet.balance = wallet.transactions.reduce((total, tx) => {
     return tx.type === 'receive' ? total + tx.amount : total - tx.amount;
-  }, 10.0); // Balance inicial
+  }, 10.0);
 
   sendWalletData(ws, userId);
 }
