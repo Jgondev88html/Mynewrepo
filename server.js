@@ -11,24 +11,26 @@ const walletsDB = new Map();
 wss.on('connection', (ws) => {
   console.log('Cliente conectado');
 
+  // Manejo de errores para cada conexión para evitar cierres anormales
+  ws.on('error', (error) => {
+    console.error('Error en la conexión WebSocket:', error);
+  });
+
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
       console.log('Mensaje recibido:', data.type);
 
-      switch(data.type) {
+      switch (data.type) {
         case 'register':
           handleRegistration(ws, data);
           break;
-
         case 'transfer':
           handleTransfer(ws, data);
           break;
-
         case 'sync':
           handleSync(ws, data);
           break;
-
         default:
           ws.send(JSON.stringify({
             type: 'error',
@@ -48,7 +50,7 @@ wss.on('connection', (ws) => {
 function handleRegistration(ws, data) {
   const { userId, balance = 10.0, transactions = [] } = data;
 
-  // Si el wallet no existe, se crea con un depósito inicial
+  // Crear wallet si no existe
   if (!walletsDB.has(userId)) {
     walletsDB.set(userId, {
       balance: balance,
@@ -71,7 +73,7 @@ function handleRegistration(ws, data) {
 function handleTransfer(ws, data) {
   const { senderId, recipientId, amount, transactionId } = data;
 
-  // Validaciones básicas: que ambos wallets existan
+  // Validaciones básicas
   if (!walletsDB.has(senderId) || !walletsDB.has(recipientId)) {
     return ws.send(JSON.stringify({
       type: 'transfer_error',
@@ -91,7 +93,7 @@ function handleTransfer(ws, data) {
     }));
   }
 
-  // Procesar la transacción
+  // Procesar transacción
   const timestamp = new Date().toISOString();
   const sendTx = {
     id: transactionId,
@@ -111,7 +113,7 @@ function handleTransfer(ws, data) {
     status: 'confirmed'
   };
 
-  // Actualizar saldos y registrar transacciones
+  // Actualizar saldos y transacciones
   sender.balance -= amount;
   recipient.balance += amount;
   sender.transactions.push(sendTx);
@@ -180,3 +182,4 @@ function sendWalletData(ws, userId) {
 server.listen(PORT, () => {
   console.log(`Servidor WebSocket corriendo en ws://localhost:${PORT}`);
 });
+    
