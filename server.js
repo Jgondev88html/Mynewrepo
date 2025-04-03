@@ -5,11 +5,12 @@ const wss = new WebSocket.Server({ port: 8080 });
 let users = {};        // Objeto: { username: { saldo: number } }
 let solicitudes = [];  // Array de solicitudes de retiro
 
+// Función para enviar un mensaje a todos los clientes conectados
 function broadcast(data) {
-  const mensaje = JSON.stringify(data);
+  const message = JSON.stringify(data);
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(mensaje);
+      client.send(message);
     }
   });
 }
@@ -32,24 +33,24 @@ wss.on('connection', ws => {
       console.log('Mensaje recibido:', data);
 
       if (data.type === 'login') {
+        // Al hacer login, se crea el usuario si no existe (saldo inicial: 100)
         const username = data.username;
         if (!users[username]) {
-          // Crear el usuario con saldo inicial (por ejemplo, 100)
           users[username] = { saldo: 100 };
-          sendUserList();
         }
-        // Responder al cliente que hizo login
         ws.send(JSON.stringify({ type: 'loginResponse', success: true, username }));
-      
+        // Enviar la lista actualizada de usuarios
+        sendUserList();
+
       } else if (data.type === 'updateSaldo') {
-        // Actualiza el saldo del usuario (para recargar o descontar)
+        // Actualiza el saldo de un usuario (para recargar o descontar)
         const username = data.username;
         if (users[username] !== undefined) {
           users[username].saldo += data.amount;
           broadcast({ type: 'saldoActualizado', username, saldo: users[username].saldo });
           sendUserList();
         }
-      
+
       } else if (data.type === 'solicitudRetiro') {
         // Agrega una solicitud de retiro
         const solicitud = {
@@ -60,7 +61,7 @@ wss.on('connection', ws => {
         };
         solicitudes.push(solicitud);
         broadcast({ type: 'nuevaSolicitud', solicitudes });
-      
+
       } else if (data.type === 'confirmarRetiro') {
         // Confirma la solicitud de retiro y descuenta el saldo si es posible
         const solicitud = solicitudes.find(s => s.id === data.id);
@@ -76,7 +77,7 @@ wss.on('connection', ws => {
         }
       }
     } catch (err) {
-      console.error('Error al procesar el mensaje:', err);
+      console.error('Error procesando el mensaje:', err);
     }
   });
 
@@ -84,3 +85,4 @@ wss.on('connection', ws => {
 });
 
 console.log('Servidor WebSocket iniciado en ws://localhost:8080');
+                     
