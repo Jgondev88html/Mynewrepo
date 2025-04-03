@@ -1,40 +1,58 @@
-const http = require('http');
 const WebSocket = require('ws');
+const wss = new WebSocket.Server({ port: 3000 });
 
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Servidor WebSocket para Administración');
-});
+let users = {};        // Almacena los datos de saldo de cada usuario
+let solicitudes = [];  // Lista de solicitudes de retiro
 
-const wss = new WebSocket.Server({ server });
-let users = {}; // Almacena usuarios y su saldo
-let solicitudes = []; // Solicitudes de retiro
+wss.on('connection', function connection(ws) {
+  console.log('Cliente conectado');
 
-wss.on('connection', (ws) => {
-  console.log('Administrador conectado');
+  ws.on('message', function incoming(message) {
+    console.log('Mensaje recibido:', message);
+    try {
+      const data = JSON.parse(message);
 
-  ws.on('message', (message) => {
-    const data = JSON.parse(message);
+      if (data.type === 'login') {
+        // Registro de usuario (en este ejemplo se acepta cualquier usuario)
+        // Asigna un saldo inicial (por ejemplo, 100)
+        users[data.username] = { saldo: users[data.username]?.saldo || 100 };
+        ws.send(JSON.stringify({ type: 'loginResponse', success: true, username: data.username }));
 
-    if (data.type === 'updateSaldo') {
-      users[data.username] = (users[data.username] || 0) + data.amount;
-      broadcast({ type: 'saldoActualizado', username: data.username, saldo: users[data.username] });
-    }
+      } else if (data.type === 'updateSaldo') {
+        // Actualiza el saldo del usuario (para recargar o descontar)
+        if (users[data.username] !== undefined) {
+          users[data.username].saldo += data.amount;
+          broadcast({ type: 'saldoActualizado', username: data.username, saldo: users[data.username].saldo });
+        }
 
-    if (data.type === 'solicitudRetiro') {
-      solicitudes.push({ username: data.username, monto: data.monto, id: solicitudes.length + 1 });
-      broadcast({ type: 'nuevaSolicitud', solicitudes });
-    }
+      } else if (data.type === 'solicitudRetiro') {
+        // Agrega solicitud de retiro
+        const solicitud = {
+          id: solicitudes.length + 1,
+          username: data.username,
+          monto: data.monto,
+          confirmado: false
+        };
+        solicitudes.push(solicitud);
+        broadcast({ type: 'nuevaSolicitud', solicitudes });
 
-    if (data.type === 'confirmarRetiro') {
-      solicitudes = solicitudes.filter(sol => sol.id !== data.id);
-      broadcast({ type: 'retiroConfirmado', id: data.id, solicitudes });
+      } else if (data.type === 'confirmarRetiro') {
+        // Confirma la solicitud de retiro y descuenta el saldo
+        let solicitud = solicitudes.find(s => s.id === data.id);
+        if (solicitud && users[solicitud.username] && users[solicitud.username].saldo >= solicitud.monto) {
+          users[solicitud.username].saldo -= solicitud.monto;
+          solicitud.confirmado = true;
+          broadcast({ type: 'retiroConfirmado', solicitudes });
+          broadcast({ type: 'saldoActualizado', username: solicitud.username, saldo: users[solicitud.username].saldo });
+        }
+      }
+
+    } catch (err) {
+      console.error('Error al procesar el mensaje:', err);
     }
   });
 
-  ws.on('close', () => {
-    console.log('Administrador desconectado');
-  });
+  ws.on('close', () => console.log('Cliente desconectado'));
 });
 
 function broadcast(data) {
@@ -45,6 +63,4 @@ function broadcast(data) {
   });
 }
 
-server.listen(3000, () => {
-  console.log('Servidor WebSocket en el puerto 3000');
-});
+console.log('Servidor WebSocket iniciado en ws://localhost:3000');
