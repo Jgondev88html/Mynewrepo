@@ -48,6 +48,15 @@ wss.on('connection', ws => {
         }));
         ws.send(JSON.stringify({ type: 'listaUsuarios', usuarios: listaUsuarios }));
 
+      } else if (data.type === 'getSaldo') {
+        // Enviar el saldo actual del usuario que lo solicita
+        const username = data.username;
+        if (users[username]) {
+          ws.send(JSON.stringify({ type: 'saldoActualizado', username, saldo: users[username].saldo }));
+        } else {
+          ws.send(JSON.stringify({ type: 'saldoActualizado', username, saldo: 0 }));
+        }
+
       } else if (data.type === 'updateSaldo') {
         // Actualiza el saldo de un usuario
         const username = data.username;
@@ -91,4 +100,3 @@ wss.on('connection', ws => {
 });
 
 console.log('Servidor WebSocket iniciado en ws://localhost:8080');
-            
