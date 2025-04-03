@@ -1,4 +1,3 @@
-// server.js
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: 8080 });
 
@@ -33,17 +32,24 @@ wss.on('connection', ws => {
       console.log('Mensaje recibido:', data);
 
       if (data.type === 'login') {
-        // Al hacer login, se crea el usuario si no existe (saldo inicial: 100)
+        // Crear el usuario si no existe (saldo inicial: 100)
         const username = data.username;
         if (!users[username]) {
           users[username] = { saldo: 100 };
         }
         ws.send(JSON.stringify({ type: 'loginResponse', success: true, username }));
-        // Enviar la lista actualizada de usuarios
         sendUserList();
 
+      } else if (data.type === 'getUsuarios') {
+        // Enviar la lista de usuarios solo a este cliente
+        const listaUsuarios = Object.keys(users).map(username => ({
+          username,
+          saldo: users[username].saldo
+        }));
+        ws.send(JSON.stringify({ type: 'listaUsuarios', usuarios: listaUsuarios }));
+
       } else if (data.type === 'updateSaldo') {
-        // Actualiza el saldo de un usuario (para recargar o descontar)
+        // Actualiza el saldo de un usuario
         const username = data.username;
         if (users[username] !== undefined) {
           users[username].saldo += data.amount;
@@ -63,7 +69,7 @@ wss.on('connection', ws => {
         broadcast({ type: 'nuevaSolicitud', solicitudes });
 
       } else if (data.type === 'confirmarRetiro') {
-        // Confirma la solicitud de retiro y descuenta el saldo si es posible
+        // Confirma la solicitud de retiro y descuenta el saldo
         const solicitud = solicitudes.find(s => s.id === data.id);
         if (solicitud && !solicitud.confirmado) {
           const username = solicitud.username;
@@ -85,4 +91,4 @@ wss.on('connection', ws => {
 });
 
 console.log('Servidor WebSocket iniciado en ws://localhost:8080');
-                     
+            
