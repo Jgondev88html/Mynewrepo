@@ -49,21 +49,28 @@ wss.on('connection', ws => {
         ws.send(JSON.stringify({ type: 'listaUsuarios', usuarios: listaUsuarios }));
 
       } else if (data.type === 'getSaldo') {
-        // Enviar el saldo actual del usuario que lo solicita
+        // Envía el saldo actual del usuario que lo solicita.
+        // Si el usuario no existe, se crea con saldo inicial 100.
         const username = data.username;
-        if (users[username]) {
-          ws.send(JSON.stringify({ type: 'saldoActualizado', username, saldo: users[username].saldo }));
-        } else {
-          ws.send(JSON.stringify({ type: 'saldoActualizado', username, saldo: 0 }));
+        if (!users[username]) {
+          users[username] = { saldo: 100 };
         }
+        ws.send(JSON.stringify({ type: 'saldoActualizado', username, saldo: users[username].saldo }));
 
       } else if (data.type === 'updateSaldo') {
-        // Actualiza el saldo de un usuario
+        // Actualiza el saldo de un usuario, pero evita que baje de 0.
         const username = data.username;
+        const amount = data.amount;
         if (users[username] !== undefined) {
-          users[username].saldo += data.amount;
-          broadcast({ type: 'saldoActualizado', username, saldo: users[username].saldo });
-          sendUserList();
+          const nuevoSaldo = users[username].saldo + amount;
+          if (nuevoSaldo >= 0) {
+            users[username].saldo = nuevoSaldo;
+            broadcast({ type: 'saldoActualizado', username, saldo: users[username].saldo });
+            sendUserList();
+          } else {
+            // Envía un mensaje de error si se intenta descontar más de lo disponible
+            ws.send(JSON.stringify({ type: 'error', message: 'Saldo insuficiente' }));
+          }
         }
 
       } else if (data.type === 'solicitudRetiro') {
@@ -78,7 +85,7 @@ wss.on('connection', ws => {
         broadcast({ type: 'nuevaSolicitud', solicitudes });
 
       } else if (data.type === 'confirmarRetiro') {
-        // Confirma la solicitud de retiro y descuenta el saldo
+        // Confirma la solicitud de retiro y descuenta el saldo, si es suficiente
         const solicitud = solicitudes.find(s => s.id === data.id);
         if (solicitud && !solicitud.confirmado) {
           const username = solicitud.username;
@@ -88,6 +95,8 @@ wss.on('connection', ws => {
             broadcast({ type: 'retiroConfirmado', solicitudes });
             broadcast({ type: 'saldoActualizado', username, saldo: users[username].saldo });
             sendUserList();
+          } else {
+            ws.send(JSON.stringify({ type: 'error', message: 'Saldo insuficiente para retiro' }));
           }
         }
       }
@@ -100,3 +109,4 @@ wss.on('connection', ws => {
 });
 
 console.log('Servidor WebSocket iniciado en ws://localhost:8080');
+        
