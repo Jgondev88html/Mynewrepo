@@ -23,6 +23,11 @@ function sendUserList() {
   broadcast({ type: 'listaUsuarios', usuarios: listaUsuarios });
 }
 
+// Envía la lista completa de solicitudes al cliente que lo solicita
+function sendSolicitudes(ws) {
+  ws.send(JSON.stringify({ type: 'listaSolicitudes', solicitudes }));
+}
+
 wss.on('connection', ws => {
   console.log('Nuevo cliente conectado');
 
@@ -40,6 +45,11 @@ wss.on('connection', ws => {
         ws.send(JSON.stringify({ type: 'loginResponse', success: true, username }));
         sendUserList();
 
+        // Si es admin, enviar la lista completa de solicitudes
+        if (username.toLowerCase() === 'admin') {
+          sendSolicitudes(ws);
+        }
+
       } else if (data.type === 'getUsuarios') {
         // Enviar la lista de usuarios solo a este cliente
         const listaUsuarios = Object.keys(users).map(username => ({
@@ -50,7 +60,6 @@ wss.on('connection', ws => {
 
       } else if (data.type === 'getSaldo') {
         // Envía el saldo actual del usuario que lo solicita.
-        // Si el usuario no existe, se crea con saldo inicial 100.
         const username = data.username;
         if (!users[username]) {
           users[username] = { saldo: 100 };
@@ -58,7 +67,7 @@ wss.on('connection', ws => {
         ws.send(JSON.stringify({ type: 'saldoActualizado', username, saldo: users[username].saldo }));
 
       } else if (data.type === 'updateSaldo') {
-        // Actualiza el saldo de un usuario, pero evita que baje de 0.
+        // Actualiza el saldo de un usuario, evitando que baje de 0.
         const username = data.username;
         const amount = data.amount;
         if (users[username] !== undefined) {
@@ -68,7 +77,6 @@ wss.on('connection', ws => {
             broadcast({ type: 'saldoActualizado', username, saldo: users[username].saldo });
             sendUserList();
           } else {
-            // Envía un mensaje de error si se intenta descontar más de lo disponible
             ws.send(JSON.stringify({ type: 'error', message: 'Saldo insuficiente' }));
           }
         }
@@ -99,6 +107,10 @@ wss.on('connection', ws => {
             ws.send(JSON.stringify({ type: 'error', message: 'Saldo insuficiente para retiro' }));
           }
         }
+
+      } else if (data.type === 'getSolicitudes') {
+        // Envía la lista completa de solicitudes al cliente que lo solicita
+        sendSolicitudes(ws);
       }
     } catch (err) {
       console.error('Error procesando el mensaje:', err);
@@ -109,4 +121,3 @@ wss.on('connection', ws => {
 });
 
 console.log('Servidor WebSocket iniciado en ws://localhost:8080');
-        
