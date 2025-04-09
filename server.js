@@ -1,4 +1,4 @@
-require('dotenv').config(); // Asegúrate de tener el paquete dotenv instalado
+require('dotenv').config();
 const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
@@ -10,11 +10,10 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (isProduction ? null : 'admin9910');
 
 if (isProduction && !ADMIN_PASSWORD) {
-  console.error('ERROR: ADMIN_PASSWORD no está configurado en producción');
+  console.error('ERROR: ADMIN_PASSWORD not configured in production');
   process.exit(1);
 }
 
-// Inicialización de la app
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -33,7 +32,7 @@ if (isProduction) {
   });
 }
 
-// Datos en memoria (en producción usa una DB)
+// Datos en memoria
 const users = {};
 const transactions = [];
 const adminConnections = new Set();
@@ -47,7 +46,7 @@ app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
-// Health Check para Render
+// Health Check
 app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
@@ -58,7 +57,7 @@ app.get('/health', (req, res) => {
 
 // WebSocket Server
 wss.on('connection', (ws) => {
-  console.log('Nueva conexión WebSocket');
+  console.log('New WebSocket connection');
   
   ws.on('message', (message) => {
     try {
@@ -77,10 +76,10 @@ wss.on('connection', (ws) => {
       handleClientMessage(ws, data);
       
     } catch (error) {
-      console.error('Error procesando mensaje:', error);
+      console.error('Error processing message:', error);
       ws.send(JSON.stringify({ 
         type: 'error', 
-        message: 'Error procesando la solicitud' 
+        message: 'Request processing error' 
       }));
     }
   });
@@ -88,31 +87,31 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (ws.isAdmin) {
       adminConnections.delete(ws);
-      console.log('Admin desconectado');
+      console.log('Admin disconnected');
     }
-    console.log('Cliente desconectado');
+    console.log('Client disconnected');
   });
   
   ws.on('error', (error) => {
-    console.error('Error en WebSocket:', error);
+    console.error('WebSocket error:', error);
   });
 });
 
-// Funciones de manejo de mensajes
+// Funciones de manejo
 function handleAdminAuth(ws, data) {
   if (data.password === ADMIN_PASSWORD) {
     adminConnections.add(ws);
     ws.isAdmin = true;
-    console.log('Admin conectado');
+    console.log('Admin connected');
     sendAdminData(ws);
     ws.send(JSON.stringify({ 
       type: 'auth-success',
-      message: 'Autenticación exitosa' 
+      message: 'Authentication successful' 
     }));
   } else {
     ws.send(JSON.stringify({ 
       type: 'auth-error', 
-      message: 'Contraseña incorrecta' 
+      message: 'Incorrect password' 
     }));
     ws.close();
   }
@@ -138,7 +137,7 @@ function handleClientMessage(ws, data) {
     default:
       ws.send(JSON.stringify({
         type: 'error',
-        message: 'Tipo de mensaje no reconocido'
+        message: 'Unrecognized message type'
       }));
   }
 }
@@ -157,7 +156,7 @@ function handleAdminMessage(ws, data) {
     default:
       ws.send(JSON.stringify({
         type: 'error',
-        message: 'Comando de admin no reconocido'
+        message: 'Unrecognized admin command'
       }));
   }
 }
@@ -199,7 +198,7 @@ function processDeposit(ws, data) {
 
 function processWithdrawRequest(ws, data) {
   const amount = parseFloat(data.amount);
-  if (isNaN(amount) return;
+  if (isNaN(amount)) return;
 
   transactions.push({
     type: 'withdraw-request',
@@ -218,7 +217,7 @@ function processWithdrawRequest(ws, data) {
 
   ws.send(JSON.stringify({
     type: 'withdraw-requested',
-    message: 'Solicitud de retiro enviada'
+    message: 'Withdrawal request sent'
   }));
 }
 
@@ -322,13 +321,13 @@ function broadcastToUser(userId, message) {
 
 // Iniciar servidor
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor corriendo en http://0.0.0.0:${PORT}`);
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
   if (!isProduction) {
-    console.log(`Modo desarrollo - Admin password: ${ADMIN_PASSWORD}`);
+    console.log(`Development mode - Admin password: ${ADMIN_PASSWORD}`);
   }
 });
 
-// Keep-alive para Render
+// Keep-alive
 setInterval(() => {
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
@@ -337,11 +336,11 @@ setInterval(() => {
   });
 }, 30000);
 
-// Manejo de errores globales
+// Manejo de errores
 process.on('uncaughtException', (err) => {
-  console.error('Error no capturado:', err);
+  console.error('Uncaught Exception:', err);
 });
 
 process.on('unhandledRejection', (err) => {
-  console.error('Promise rechazada no capturada:', err);
+  console.error('Unhandled Rejection:', err);
 });
