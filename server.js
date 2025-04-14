@@ -1,346 +1,201 @@
-require('dotenv').config();
-const express = require('express');
 const WebSocket = require('ws');
 const http = require('http');
-const path = require('path');
+const uuid = require('uuid');
 
-// Configuración de entorno
-const isProduction = process.env.NODE_ENV === 'production';
-const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || (isProduction ? null : 'admin9910');
+// Crear servidor HTTP
+const server = http.createServer((req, res) => {
+res.writeHead(200, { 'Content-Type': 'text/plain' });
+res.end('WebSocket Chat Server\n');
+});
 
-if (isProduction && !ADMIN_PASSWORD) {
-  console.error('ERROR: ADMIN_PASSWORD not configured in production');
-  process.exit(1);
-}
-
-const app = express();
-const server = http.createServer(app);
+// Crear servidor WebSocket
 const wss = new WebSocket.Server({ server });
 
-// Middlewares
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Almacenamiento de usuarios y parejas
+const users = new Map(); // Map<userId, WebSocket>
+  const waitingQueue = []; // Cola de usuarios esperando pareja
+  const activePairs = new Map(); // Map<userId1, userId2>
 
-// Forzar HTTPS en producción
-if (isProduction) {
-  app.use((req, res, next) => {
-    if (req.headers['x-forwarded-proto'] !== 'https') {
-      return res.redirect(`https://${req.headers.host}${req.url}`);
+    // Contador de usuarios activos
+    let activeUsersCount = 0;
+
+    // Actualizar contador y notificar a todos
+    function updateActiveUsersCount() {
+    activeUsersCount = users.size;
+    broadcastActiveUsersCount();
     }
-    next();
-  });
-}
 
-// Datos en memoria
-const users = {};
-const transactions = [];
-const adminConnections = new Set();
-
-// Rutas
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-app.get('/admin', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-});
-
-// Health Check
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'healthy',
-    websocketClients: wss.clients.size,
-    users: Object.keys(users).length
-  });
-});
-
-// WebSocket Server
-wss.on('connection', (ws) => {
-  console.log('New WebSocket connection');
-  
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
-      
-      if (data.type === 'admin-auth') {
-        handleAdminAuth(ws, data);
-        return;
-      }
-      
-      if (ws.isAdmin) {
-        handleAdminMessage(ws, data);
-        return;
-      }
-      
-      handleClientMessage(ws, data);
-      
-    } catch (error) {
-      console.error('Error processing message:', error);
-      ws.send(JSON.stringify({ 
-        type: 'error', 
-        message: 'Request processing error' 
-      }));
-    }
-  });
-  
-  ws.on('close', () => {
-    if (ws.isAdmin) {
-      adminConnections.delete(ws);
-      console.log('Admin disconnected');
-    }
-    console.log('Client disconnected');
-  });
-  
-  ws.on('error', (error) => {
-    console.error('WebSocket error:', error);
-  });
-});
-
-// Funciones de manejo
-function handleAdminAuth(ws, data) {
-  if (data.password === ADMIN_PASSWORD) {
-    adminConnections.add(ws);
-    ws.isAdmin = true;
-    console.log('Admin connected');
-    sendAdminData(ws);
-    ws.send(JSON.stringify({ 
-      type: 'auth-success',
-      message: 'Authentication successful' 
-    }));
-  } else {
-    ws.send(JSON.stringify({ 
-      type: 'auth-error', 
-      message: 'Incorrect password' 
-    }));
-    ws.close();
-  }
-}
-
-function handleClientMessage(ws, data) {
-  switch (data.type) {
-    case 'register':
-      registerUser(ws, data);
-      break;
-    case 'deposit':
-      processDeposit(ws, data);
-      break;
-    case 'withdraw-request':
-      processWithdrawRequest(ws, data);
-      break;
-    case 'trade':
-      processTrade(ws, data);
-      break;
-    case 'close-position':
-      closePosition(data.userId, data.positionId);
-      break;
-    default:
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Unrecognized message type'
-      }));
-  }
-}
-
-function handleAdminMessage(ws, data) {
-  switch (data.type) {
-    case 'approve-withdraw':
-      approveWithdrawal(data.userId, data.amount);
-      break;
-    case 'reject-withdraw':
-      rejectWithdrawal(data.userId, data.amount);
-      break;
-    case 'update-balance':
-      updateUserBalance(data.userId, data.amount);
-      break;
-    default:
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Unrecognized admin command'
-      }));
-  }
-}
-
-// Funciones de negocio
-function registerUser(ws, data) {
-  if (!users[data.userId]) {
-    users[data.userId] = {
-      id: data.userId,
-      balance: 0,
-      positions: [],
-      createdAt: new Date()
+    // Enviar contador a todos los usuarios
+    function broadcastActiveUsersCount() {
+    const message = {
+    type: 'activeUsers',
+    count: activeUsersCount
     };
-  }
-  ws.userId = data.userId;
-  sendUserData(ws, data.userId);
-  notifyAdmins('new-user', { userId: data.userId });
-}
 
-function processDeposit(ws, data) {
-  const amount = parseFloat(data.amount);
-  if (isNaN(amount) || amount <= 0) return;
+    users.forEach((ws) => {
+    if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(message));
+    }
+    });
+    }
 
-  users[data.userId].balance += amount;
-  transactions.push({
-    type: 'deposit',
-    userId: data.userId,
-    amount,
-    date: new Date()
-  });
+    // Emparejar usuarios
+    function matchUsers() {
+    while (waitingQueue.length >= 2) {
+    const userId1 = waitingQueue.shift();
+    const userId2 = waitingQueue.shift();
 
-  sendUserData(ws, data.userId);
-  notifyAdmins('transaction', {
-    type: 'deposit',
-    userId: data.userId,
-    amount
-  });
-}
+    activePairs.set(userId1, userId2);
+    activePairs.set(userId2, userId1);
 
-function processWithdrawRequest(ws, data) {
-  const amount = parseFloat(data.amount);
-  if (isNaN(amount)) return;
+    const ws1 = users.get(userId1);
+    const ws2 = users.get(userId2);
 
-  transactions.push({
-    type: 'withdraw-request',
-    userId: data.userId,
-    amount,
-    wallet: data.wallet,
-    date: new Date(),
-    status: 'pending'
-  });
-
-  notifyAdmins('withdraw-request', {
-    userId: data.userId,
-    amount,
-    wallet: data.wallet
-  });
-
-  ws.send(JSON.stringify({
-    type: 'withdraw-requested',
-    message: 'Withdrawal request sent'
-  }));
-}
-
-function processTrade(ws, data) {
-  const user = users[data.userId];
-  if (!user) return;
-
-  const position = {
-    id: Date.now(),
-    type: data.tradeType,
-    amount: parseFloat(data.amount),
-    leverage: parseInt(data.leverage),
-    entryPrice: parseFloat(data.entryPrice),
-    timestamp: new Date()
-  };
-
-  user.positions.push(position);
-  user.balance -= position.amount;
-
-  sendUserData(ws, data.userId);
-  notifyAdmins('new-position', {
-    userId: data.userId,
-    position
-  });
-
-  setTimeout(() => {
-    closePosition(data.userId, position.id);
-  }, 10000);
-}
-
-// Funciones de utilidad
-function sendUserData(ws, userId) {
-  const user = users[userId];
-  if (!user) return;
-
-  ws.send(JSON.stringify({
-    type: 'user-data',
-    userId,
-    balance: user.balance,
-    positions: user.positions
-  }));
-}
-
-function sendAdminData(ws) {
-  ws.send(JSON.stringify({
-    type: 'admin-data',
-    users: Object.values(users),
-    transactions: transactions.filter(t => t.type !== 'trade'),
-    pendingWithdrawals: transactions.filter(t => 
-      t.type === 'withdraw-request' && t.status === 'pending'
-    )
-  }));
-}
-
-function notifyAdmins(eventType, data) {
-  adminConnections.forEach(admin => {
-    admin.send(JSON.stringify({
-      type: 'admin-notification',
-      event: eventType,
-      data
+    if (ws1 && ws1.readyState === WebSocket.OPEN) {
+    ws1.send(JSON.stringify({
+    type: 'partnerFound',
+    partnerId: userId2
     }));
-  });
-}
-
-function closePosition(userId, positionId) {
-  const user = users[userId];
-  if (!user) return;
-
-  const positionIndex = user.positions.findIndex(p => p.id === positionId);
-  if (positionIndex === -1) return;
-
-  const position = user.positions[positionIndex];
-  const priceChange = (Math.random() - 0.4) * 10;
-  const profit = position.amount * position.leverage * priceChange / 100;
-
-  user.balance += position.amount + profit;
-  user.positions.splice(positionIndex, 1);
-
-  broadcastToUser(userId, {
-    type: 'position-closed',
-    positionId,
-    profit,
-    balance: user.balance
-  });
-
-  notifyAdmins('position-closed', {
-    userId,
-    positionId,
-    profit,
-    newBalance: user.balance
-  });
-}
-
-function broadcastToUser(userId, message) {
-  wss.clients.forEach(client => {
-    if (client.userId === userId) {
-      client.send(JSON.stringify(message));
     }
-  });
-}
 
-// Iniciar servidor
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on http://0.0.0.0:${PORT}`);
-  if (!isProduction) {
-    console.log(`Development mode - Admin password: ${ADMIN_PASSWORD}`);
-  }
-});
-
-// Keep-alive
-setInterval(() => {
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.ping();
+    if (ws2 && ws2.readyState === WebSocket.OPEN) {
+    ws2.send(JSON.stringify({
+    type: 'partnerFound',
+    partnerId: userId1
+    }));
     }
-  });
-}, 30000);
+    }
+    }
 
-// Manejo de errores
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
+    // Manejar desconexión de usuario
+    function handleDisconnect(userId) {
+    const partnerId = activePairs.get(userId);
 
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
-});
+    if (partnerId) {
+    // Notificar al compañero
+    const partnerWs = users.get(partnerId);
+    if (partnerWs && partnerWs.readyState === WebSocket.OPEN) {
+    partnerWs.send(JSON.stringify({
+    type: 'partnerDisconnected'
+    }));
+
+    // Poner al compañero en la cola de espera
+    waitingQueue.push(partnerId);
+    activePairs.delete(partnerId);
+    }
+
+    activePairs.delete(userId);
+    } else {
+    // Eliminar de la cola de espera si estaba esperando
+    const index = waitingQueue.indexOf(userId);
+    if (index !== -1) {
+    waitingQueue.splice(index, 1);
+    }
+    }
+
+    // Eliminar usuario
+    users.delete(userId);
+    updateActiveUsersCount();
+
+    // Intentar emparejar usuarios restantes
+    matchUsers();
+    }
+
+    // Evento de conexión WebSocket
+    wss.on('connection', (ws) => {
+    const userId = uuid.v4();
+    users.set(userId, ws);
+    updateActiveUsersCount();
+
+    console.log(`Nuevo usuario conectado: ${userId}. Total: ${users.size}`);
+
+    // Enviar ID al cliente (podría ser útil para depuración)
+    ws.send(JSON.stringify({
+    type: 'connection',
+    userId: userId
+    }));
+
+    // Poner al usuario en la cola de espera
+    waitingQueue.push(userId);
+    matchUsers();
+
+    // Manejar mensajes del cliente
+    ws.on('message', (message) => {
+    try {
+    const data = JSON.parse(message);
+
+    switch(data.type) {
+    case 'message':
+    handleMessage(userId, data);
+    break;
+
+    case 'typing':
+    handleTyping(userId, data);
+    break;
+
+    default:
+    console.log('Tipo de mensaje desconocido:', data.type);
+    }
+    } catch (error) {
+    console.error('Error al procesar mensaje:', error);
+    }
+    });
+
+    // Manejar cierre de conexión
+    ws.on('close', () => {
+    console.log(`Usuario desconectado: ${userId}`);
+    handleDisconnect(userId);
+    });
+
+    // Manejar errores
+    ws.on('error', (error) => {
+    console.error(`Error en conexión con usuario ${userId}:`, error);
+    handleDisconnect(userId);
+    });
+    });
+
+    // Manejar mensajes de chat
+    function handleMessage(senderId, data) {
+    const recipientId = activePairs.get(senderId);
+
+    if (!recipientId) {
+    console.log(`Usuario ${senderId} intentó enviar mensaje sin pareja`);
+    return;
+    }
+
+    const recipientWs = users.get(recipientId);
+
+    if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
+    recipientWs.send(JSON.stringify({
+    type: 'message',
+    message: data.text,
+    senderId: senderId,
+    timestamp: new Date().toISOString()
+    }));
+    }
+    }
+
+    // Manejar eventos de escritura
+    function handleTyping(senderId, data) {
+    const recipientId = activePairs.get(senderId);
+
+    if (!recipientId) {
+    return;
+    }
+
+    const recipientWs = users.get(recipientId);
+
+    if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
+    recipientWs.send(JSON.stringify({
+    type: 'typing',
+    typing: data.typing,
+    senderId: senderId
+    }));
+    }
+    }
+
+    // Iniciar servidor
+    const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => {
+    console.log(`Servidor escuchando en el puerto ${PORT}`);
+    });
