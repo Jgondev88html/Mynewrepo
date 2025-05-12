@@ -1,16 +1,20 @@
 {
   "name": "token-wallet-server",
   "version": "1.0.0",
-  "description": "Servidor de billetera de tokens con WebSocket",
+  "description": "Servidor de billetera de tokens con WebSocket y SQLite",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
-    "ws": "^8.12.1"
+    "sqlite3": "^5.1.6",
+    "ws": "^8.13.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.20"
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.x"
   }
 }
