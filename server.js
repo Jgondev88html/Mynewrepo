@@ -5,8 +5,8 @@ const http = require('http');
 const users = new Map(); // {userId: {balance: number, pending: array}}
 const transactions = new Map(); // {txId: transaction}
 let firstUserId = null; // Almacena el ID del primer usuario registrado
-const MINT_AMOUNT = 100; // Cantidad de tokens a generar
-const MINT_INTERVAL = 300000; // Intervalo en milisegundos (30 segundos)
+const MINT_AMOUNT = 10; // Cantidad de tokens a generar
+const MINT_INTERVAL = 3000; // Intervalo en milisegundos (30 segundos)
 const INITIAL_BALANCE = 0; // Balance inicial para nuevos usuarios
 
 // Crear servidor HTTP
