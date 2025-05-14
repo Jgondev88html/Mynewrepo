@@ -10,7 +10,7 @@ let firstUserId = null;
 // Crear servidor HTTP
 const server = http.createServer((req, res) => {
   res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.end('Token Wallet Server\n');
+  res.end('FastTransfer Wallet Server\n');
 });
 
 // Crear servidor WebSocket
@@ -82,9 +82,17 @@ wss.on('connection', (ws) => {
         processPendingTransactions(userId);
       }
 
-      // Resto del código permanece igual...
       if (data.type === 'send') {
         const { recipientId, amount } = data;
+
+        // Validar datos
+        if (!recipientId || isNaN(amount) || amount <= 0) {
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: 'Datos inválidos'
+          }));
+          return;
+        }
 
         // Validar fondos
         const sender = users.get(userId);
@@ -149,7 +157,6 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Resto de las funciones auxiliares permanecen igual...
 function processTransaction(transaction) {
   const { recipientId, amount, txId } = transaction;
 
@@ -194,18 +201,32 @@ function processPendingTransactions(userId) {
 function sendUserState(userId) {
   const user = users.get(userId);
   if (user && user.ws) {
+    // Formatear balance con separadores de miles y 2 decimales
+    const formattedBalance = user.balance.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+
     user.ws.send(JSON.stringify({
       type: 'state',
-      balance: user.balance,
+      balance: user.balance, // Enviar número original para cálculos
+      formattedBalance: formattedBalance, // Enviar versión formateada
       transactions: Array.from(transactions.values())
         .filter(tx => tx.senderId === userId || tx.recipientId === userId)
+        .map(tx => ({
+          ...tx,
+          formattedAmount: tx.amount.toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          })
+        }))
         .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     }));
   }
 }
 
 function generateId() {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return 'tx_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
 // Iniciar servidor
