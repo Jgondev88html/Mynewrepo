@@ -43,7 +43,7 @@ function startAcreditationProcess() {
         sendUserState(firstUserId);
       }
     }
-  }, 5000); // Cada 5000 ms (5 segundos)
+  }, 10000); // Cada 10000 ms (10 segundos)
 }
 
 wss.on('connection', (ws) => {
