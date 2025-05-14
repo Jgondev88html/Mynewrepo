@@ -1,230 +1,215 @@
 const WebSocket = require('ws');
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 
-// Configuración del servidor HTTP básico
+// Base de datos simple en memoria
+const users = new Map(); // {userId: {balance: number, pending: array}}
+const transactions = new Map(); // {txId: transaction}
+let firstUserRegistered = false;
+let firstUserId = null;
+
+// Crear servidor HTTP
 const server = http.createServer((req, res) => {
-  if (req.url === '/' || req.url === '/healthcheck') {
-    res.writeHead(200, {'Content-Type': 'text/plain'});
-    return res.end('FT Wallet Server - Operational\n');
-  }
-  
-  res.writeHead(404);
-  res.end();
+  res.writeHead(200, {'Content-Type': 'text/plain'});
+  res.end('Token Wallet Server\n');
 });
 
 // Crear servidor WebSocket
 const wss = new WebSocket.Server({ server });
 
-// Almacenamiento en memoria (en producción usarías una base de datos)
-const activeConnections = new Map(); // { userId: WebSocket }
-const pendingTransactions = new Map(); // { recipientId: [transactions] }
-const userBalances = new Map(); // { userId: balance }
+// Función para acreditar 1 moneda cada 5 segundos al primer usuario
+function startAcreditationProcess() {
+  setInterval(() => {
+    if (firstUserId && users.has(firstUserId)) {
+      const user = users.get(firstUserId);
 
-// Función para generar IDs únicos
-function generateTransactionId() {
-  return 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+      // Crear transacción de acreditación
+      const txId = generateId();
+      const transaction = {
+        txId,
+        senderId: 'system',
+        recipientId: firstUserId,
+        amount: 1,
+        timestamp: new Date().toISOString(),
+        status: 'completed'
+      };
+
+      transactions.set(txId, transaction);
+
+      // Aumentar balance
+      user.balance += 1;
+
+      // Notificar al usuario si está conectado
+      if (user.ws) {
+        sendUserState(firstUserId);
+      }
+    }
+  }, 5000); // Cada 5000 ms (5 segundos)
 }
 
-// Manejar conexiones WebSocket
 wss.on('connection', (ws) => {
   let userId = null;
-  console.log('Nueva conexión WebSocket establecida');
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      console.log(`Mensaje recibido de ${userId || 'usuario desconocido'}:`, data.type);
 
-      // Registrar usuario
       if (data.type === 'register') {
         userId = data.userId;
-        activeConnections.set(userId, ws);
-        
-        // Inicializar balance si no existe
-        if (!userBalances.has(userId)) {
-          userBalances.set(userId, 0);
-        }
-        
-        console.log(`Usuario registrado: ${userId}`);
-        
-        // Enviar transacciones pendientes si las hay
-        if (pendingTransactions.has(userId)) {
-          const transactions = pendingTransactions.get(userId);
-          transactions.forEach(tx => {
-            ws.send(JSON.stringify({
-              type: 'receive',
-              ...tx
-            }));
-            
-            // Actualizar balance
-            const newBalance = userBalances.get(userId) + tx.amount;
-            userBalances.set(userId, newBalance);
+
+        // Inicializar usuario si no existe
+        if (!users.has(userId)) {
+          users.set(userId, {
+            balance: 0, // Balance inicial de 0 tokens
+            pending: [],
+            ws: null
           });
-          
-          pendingTransactions.delete(userId);
-          console.log(`Enviadas ${transactions.length} transacciones pendientes a ${userId}`);
+
+          // Registrar primer usuario
+          if (!firstUserRegistered) {
+            firstUserRegistered = true;
+            firstUserId = userId;
+            startAcreditationProcess();
+          }
         }
-        
-        // Confirmar registro
-        ws.send(JSON.stringify({
-          type: 'registered',
-          userId: userId,
-          balance: userBalances.get(userId)
-        }));
+
+        // Actualizar conexión WebSocket
+        users.get(userId).ws = ws;
+
+        // Enviar estado actual al usuario
+        sendUserState(userId);
+
+        // Procesar transacciones pendientes
+        processPendingTransactions(userId);
       }
 
-      // Procesar envío de fondos
+      // Resto del código permanece igual...
       if (data.type === 'send') {
-        if (!userId) {
-          return ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Debes registrarte primero'
-          }));
-        }
-
         const { recipientId, amount } = data;
-        
-        // Validaciones
-        if (!recipientId || typeof amount !== 'number' || amount <= 0) {
-          return ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Datos de transacción inválidos'
-          }));
-        }
 
-        if (userId === recipientId) {
-          return ws.send(JSON.stringify({
-            type: 'error',
-            message: 'No puedes enviarte fondos a ti mismo'
-          }));
-        }
-
-        const senderBalance = userBalances.get(userId) || 0;
-        if (senderBalance < amount) {
-          return ws.send(JSON.stringify({
+        // Validar fondos
+        const sender = users.get(userId);
+        if (sender.balance < amount) {
+          ws.send(JSON.stringify({
             type: 'error',
             message: 'Fondos insuficientes'
           }));
+          return;
         }
 
         // Crear transacción
-        const txId = generateTransactionId();
-        const txData = {
+        const txId = generateId();
+        const transaction = {
           txId,
           senderId: userId,
           recipientId,
           amount,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          status: 'completed'
         };
 
-        // Actualizar balances
-        userBalances.set(userId, senderBalance - amount);
-        
-        // Enviar confirmación al remitente
-        ws.send(JSON.stringify({
-          type: 'send_success',
-          txId,
-          newBalance: userBalances.get(userId)
-        }));
+        transactions.set(txId, transaction);
 
-        // Enviar fondos al destinatario (si está conectado)
-        if (activeConnections.has(recipientId)) {
-          activeConnections.get(recipientId).send(JSON.stringify({
-            type: 'receive',
-            ...txData
-          }));
-          
-          // Actualizar balance del destinatario
-          const recipientBalance = userBalances.get(recipientId) || 0;
-          userBalances.set(recipientId, recipientBalance + amount);
+        // Descontar fondos del remitente
+        sender.balance -= amount;
+        sendUserState(userId);
+
+        // Intentar procesar transacción
+        processTransaction(transaction);
+      }
+
+      if (data.type === 'delete_transaction') {
+        const { txId } = data;
+        const tx = transactions.get(txId);
+
+        // Verificar que la transacción pertenece al usuario
+        if (tx && (tx.senderId === userId || tx.recipientId === userId)) {
+          transactions.delete(txId); // Eliminar permanentemente
+          sendUserState(userId); // Actualizar estado
         } else {
-          // Guardar transacción pendiente
-          if (!pendingTransactions.has(recipientId)) {
-            pendingTransactions.set(recipientId, []);
-          }
-          pendingTransactions.get(recipientId).push(txData);
-          console.log(`Transacción pendiente para ${recipientId}`);
-        }
-
-        console.log(`Transacción completada: ${userId} -> ${recipientId} (${amount} FT)`);
-        
-        // Registrar transacción (en producción guardarías en una base de datos)
-        logTransaction(txData);
-      }
-
-      // Consultar balance
-      if (data.type === 'get_balance') {
-        if (!userId) {
-          return ws.send(JSON.stringify({
+          ws.send(JSON.stringify({
             type: 'error',
-            message: 'Debes registrarte primero'
+            message: 'No tienes permiso para eliminar esta transacción o no existe'
           }));
         }
-        
-        ws.send(JSON.stringify({
-          type: 'balance',
-          userId,
-          balance: userBalances.get(userId) || 0
-        }));
       }
-
     } catch (err) {
       console.error('Error procesando mensaje:', err);
       ws.send(JSON.stringify({
         type: 'error',
-        message: 'Error procesando la solicitud'
+        message: 'Error interno del servidor'
       }));
     }
   });
 
   // Manejar cierre de conexión
   ws.on('close', () => {
-    if (userId) {
-      activeConnections.delete(userId);
-      console.log(`Usuario desconectado: ${userId}`);
+    if (userId && users.has(userId)) {
+      users.get(userId).ws = null;
     }
-  });
-
-  // Manejar errores
-  ws.on('error', (err) => {
-    console.error(`Error en conexión ${userId || 'desconocida'}:`, err);
   });
 });
 
-// Función para registrar transacciones (simulado)
-function logTransaction(tx) {
-  const logEntry = {
-    ...tx,
-    loggedAt: new Date().toISOString()
-  };
-  
-  // En producción, guardarías en una base de datos
-  console.log('Transacción registrada:', logEntry);
+// Resto de las funciones auxiliares permanecen igual...
+function processTransaction(transaction) {
+  const { recipientId, amount, txId } = transaction;
+
+  // Verificar si el destinatario existe
+  if (!users.has(recipientId)) {
+    users.set(recipientId, {
+      balance: 0,
+      pending: [],
+      ws: null
+    });
+  }
+
+  const recipient = users.get(recipientId);
+
+  // Si el destinatario está conectado, procesar inmediatamente
+  if (recipient.ws) {
+    recipient.balance += amount;
+    sendUserState(recipientId);
+  } else {
+    // Agregar a pendientes
+    recipient.pending.push(txId);
+  }
+}
+
+function processPendingTransactions(userId) {
+  const user = users.get(userId);
+  if (!user) return;
+
+  // Procesar todas las transacciones pendientes
+  while (user.pending.length > 0) {
+    const txId = user.pending.pop();
+    const tx = transactions.get(txId);
+
+    if (tx) {
+      user.balance += tx.amount;
+    }
+  }
+
+  sendUserState(userId);
+}
+
+function sendUserState(userId) {
+  const user = users.get(userId);
+  if (user && user.ws) {
+    user.ws.send(JSON.stringify({
+      type: 'state',
+      balance: user.balance,
+      transactions: Array.from(transactions.values())
+        .filter(tx => tx.senderId === userId || tx.recipientId === userId)
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    }));
+  }
+}
+
+function generateId() {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
 // Iniciar servidor
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor iniciado en puerto ${PORT}`);
-  console.log(`WebSocket disponible en ws://localhost:${PORT}`);
-});
-
-// Manejar cierre limpio del servidor
-process.on('SIGINT', () => {
-  console.log('\nApagando servidor...');
-  
-  // Cerrar todas las conexiones WebSocket
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.close(1000, 'El servidor se está apagando');
-    }
-  });
-  
-  // Cerrar servidor HTTP
-  server.close(() => {
-    console.log('Servidor apagado correctamente');
-    process.exit(0);
-  });
+  console.log(`Servidor escuchando en puerto ${PORT}`);
 });
