@@ -1,236 +1,193 @@
 const WebSocket = require('ws');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-// Base de datos simple en memoria
-const users = new Map(); // {userId: {balance: number, pending: array}}
-const transactions = new Map(); // {txId: transaction}
-let firstUserRegistered = false;
-let firstUserId = null;
-
-// Crear servidor HTTP
+// Create HTTP server
 const server = http.createServer((req, res) => {
-  res.writeHead(200, {'Content-Type': 'text/plain'});
-  res.end('FastTransfer Wallet Server\n');
+    if (req.url === '/') {
+        fs.readFile(path.join(__dirname, 'index.html'), (err, data) => {
+            if (err) {
+                res.writeHead(500);
+                res.end('Error loading wallet interface');
+                return;
+            }
+            res.writeHead(200, {'Content-Type': 'text/html'});
+            res.end(data);
+        });
+    } else if (req.url === '/style.css') {
+        res.writeHead(200, {'Content-Type': 'text/css'});
+        res.end(fs.readFileSync(path.join(__dirname, 'style.css')));
+    } else {
+        res.writeHead(404);
+        res.end('Not found');
+    }
 });
 
-// Crear servidor WebSocket
+// Create WebSocket server
 const wss = new WebSocket.Server({ server });
 
-// Función para acreditar 1 moneda cada 5 segundos al primer usuario
-function startAcreditationProcess() {
-  setInterval(() => {
-    if (firstUserId && users.has(firstUserId)) {
-      const user = users.get(firstUserId);
-
-      // Crear transacción de acreditación
-      const txId = generateId();
-      const transaction = {
-        txId,
-        senderId: 'system',
-        recipientId: firstUserId,
-        amount: 1,
-        timestamp: new Date().toISOString(),
-        status: 'completed'
-      };
-
-      transactions.set(txId, transaction);
-
-      // Aumentar balance
-      user.balance += 1;
-
-      // Notificar al usuario si está conectado
-      if (user.ws) {
-        sendUserState(firstUserId);
-      }
-    }
-  }, 10000); // Cada 10000 ms (10 segundos)
-}
+// Data structures
+const clients = new Map();          // Active connections: {walletId: ws}
+const pendingTransactions = new Map(); // Pending transactions: {walletId: [transactions]}
+const transactionHistory = [];      // Complete transaction log
 
 wss.on('connection', (ws) => {
-  let userId = null;
+    console.log('New connection established');
 
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
+    ws.on('message', (message) => {
+        try {
+            const data = JSON.parse(message);
 
-      if (data.type === 'register') {
-        userId = data.userId;
+            if (data.type === 'register') {
+                // Handle wallet registration
+                if (clients.has(data.walletId)) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Wallet ID already in use'
+                    }));
+                    return;
+                }
 
-        // Inicializar usuario si no existe
-        if (!users.has(userId)) {
-          users.set(userId, {
-            balance: 0, // Balance inicial de 0 tokens
-            pending: [],
-            ws: null
-          });
+                clients.set(data.walletId, ws);
+                console.log(`Wallet registered: ${data.walletId}`);
 
-          // Registrar primer usuario
-          if (!firstUserRegistered) {
-            firstUserRegistered = true;
-            firstUserId = userId;
-            startAcreditationProcess();
-          }
+                // Process any pending transactions for this wallet
+                if (pendingTransactions.has(data.walletId)) {
+                    const pending = pendingTransactions.get(data.walletId);
+                    pending.forEach(tx => {
+                        tx.status = 'completed';
+                        ws.send(JSON.stringify({
+                            type: 'transaction',
+                            ...tx
+                        }));
+                    });
+                    pendingTransactions.delete(data.walletId);
+                    console.log(`Delivered ${pending.length} pending transactions to ${data.walletId}`);
+                }
+
+                ws.send(JSON.stringify({
+                    type: 'registered',
+                    walletId: data.walletId,
+                    message: 'Wallet registered successfully'
+                }));
+
+            } else if (data.type === 'transaction') {
+                console.log(`Processing transaction from ${data.from} to ${data.to} for ${data.amount} FTC`);
+
+                // Validate transaction
+                if (!data.from || !data.to || !data.amount) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Incomplete transaction data'
+                    }));
+                    return;
+                }
+
+                if (data.from === data.to) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Cannot send funds to yourself'
+                    }));
+                    return;
+                }
+
+                const amount = parseFloat(data.amount);
+                if (isNaN(amount) || amount <= 0) {
+                    ws.send(JSON.stringify({
+                        type: 'error',
+                        message: 'Invalid amount'
+                    }));
+                    return;
+                }
+
+                // Create transaction record
+                const tx = {
+                    id: `tx-${Date.now()}`,
+                    from: data.from,
+                    to: data.to,
+                    amount: amount.toFixed(6),
+                    timestamp: new Date().toISOString(),
+                    status: 'pending'
+                };
+
+                // Try to deliver to recipient
+                const recipientWs = clients.get(data.to);
+                if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
+                    tx.status = 'completed';
+                    recipientWs.send(JSON.stringify({
+                        type: 'transaction',
+                        ...tx
+                    }));
+                } else {
+                    // Store for later delivery
+                    if (!pendingTransactions.has(data.to)) {
+                        pendingTransactions.set(data.to, []);
+                    }
+                    pendingTransactions.get(data.to).push(tx);
+                    console.log(`Transaction queued for offline recipient: ${data.to}`);
+                }
+
+                // Add to history and confirm to sender
+                transactionHistory.push(tx);
+                ws.send(JSON.stringify({
+                    type: 'transaction_success',
+                    ...tx
+                }));
+
+            }
+        } catch (error) {
+            console.error('Error processing message:', error);
+            ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Error processing request'
+            }));
         }
+    });
 
-        // Actualizar conexión WebSocket
-        users.get(userId).ws = ws;
-
-        // Enviar estado actual al usuario
-        sendUserState(userId);
-
-        // Procesar transacciones pendientes
-        processPendingTransactions(userId);
-      }
-
-      if (data.type === 'send') {
-        const { recipientId, amount } = data;
-
-        // Validar datos
-        if (!recipientId || isNaN(amount) || amount <= 0) {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Datos inválidos'
-          }));
-          return;
+    ws.on('close', () => {
+        // Clean up disconnected clients
+        for (const [walletId, clientWs] of clients.entries()) {
+            if (clientWs === ws) {
+                clients.delete(walletId);
+                console.log(`Wallet disconnected: ${walletId}`);
+                break;
+            }
         }
+    });
 
-        // Validar fondos
-        const sender = users.get(userId);
-        if (sender.balance < amount) {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'Fondos insuficientes'
-          }));
-          return;
-        }
-
-        // Crear transacción
-        const txId = generateId();
-        const transaction = {
-          txId,
-          senderId: userId,
-          recipientId,
-          amount,
-          timestamp: new Date().toISOString(),
-          status: 'completed'
-        };
-
-        transactions.set(txId, transaction);
-
-        // Descontar fondos del remitente
-        sender.balance -= amount;
-        sendUserState(userId);
-
-        // Intentar procesar transacción
-        processTransaction(transaction);
-      }
-
-      if (data.type === 'delete_transaction') {
-        const { txId } = data;
-        const tx = transactions.get(txId);
-
-        // Verificar que la transacción pertenece al usuario
-        if (tx && (tx.senderId === userId || tx.recipientId === userId)) {
-          transactions.delete(txId); // Eliminar permanentemente
-          sendUserState(userId); // Actualizar estado
-        } else {
-          ws.send(JSON.stringify({
-            type: 'error',
-            message: 'No tienes permiso para eliminar esta transacción o no existe'
-          }));
-        }
-      }
-    } catch (err) {
-      console.error('Error procesando mensaje:', err);
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Error interno del servidor'
-      }));
-    }
-  });
-
-  // Manejar cierre de conexión
-  ws.on('close', () => {
-    if (userId && users.has(userId)) {
-      users.get(userId).ws = null;
-    }
-  });
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+    });
 });
 
-function processTransaction(transaction) {
-  const { recipientId, amount, txId } = transaction;
-
-  // Verificar si el destinatario existe
-  if (!users.has(recipientId)) {
-    users.set(recipientId, {
-      balance: 0,
-      pending: [],
-      ws: null
-    });
-  }
-
-  const recipient = users.get(recipientId);
-
-  // Si el destinatario está conectado, procesar inmediatamente
-  if (recipient.ws) {
-    recipient.balance += amount;
-    sendUserState(recipientId);
-  } else {
-    // Agregar a pendientes
-    recipient.pending.push(txId);
-  }
-}
-
-function processPendingTransactions(userId) {
-  const user = users.get(userId);
-  if (!user) return;
-
-  // Procesar todas las transacciones pendientes
-  while (user.pending.length > 0) {
-    const txId = user.pending.pop();
-    const tx = transactions.get(txId);
-
-    if (tx) {
-      user.balance += tx.amount;
-    }
-  }
-
-  sendUserState(userId);
-}
-
-function sendUserState(userId) {
-  const user = users.get(userId);
-  if (user && user.ws) {
-    // Formatear balance con separadores de miles y 2 decimales
-    const formattedBalance = user.balance.toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-
-    user.ws.send(JSON.stringify({
-      type: 'state',
-      balance: user.balance, // Enviar número original para cálculos
-      formattedBalance: formattedBalance, // Enviar versión formateada
-      transactions: Array.from(transactions.values())
-        .filter(tx => tx.senderId === userId || tx.recipientId === userId)
-        .map(tx => ({
-          ...tx,
-          formattedAmount: tx.amount.toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          })
-        }))
-        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-    }));
-  }
-}
-
-function generateId() {
-  return 'tx_' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-}
-
-// Iniciar servidor
+// Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Servidor escuchando en puerto ${PORT}`);
+    console.log(`FastTransfer Wallet Server running on http://localhost:${PORT}`);
+    console.log(`WebSocket endpoint: ws://localhost:${PORT}`);
 });
+
+// Periodic maintenance
+setInterval(() => {
+    // Save transaction history to disk
+    if (transactionHistory.length > 0) {
+        const logEntry = {
+            timestamp: new Date().toISOString(),
+            transactionCount: transactionHistory.length,
+            pendingTransactions: Array.from(pendingTransactions.entries()).reduce((acc, [walletId, txs]) => {
+                acc[walletId] = txs.length;
+                return acc;
+            }, {})
+        };
+
+        fs.appendFile('transactions.log', JSON.stringify(logEntry) + '\n', (err) => {
+            if (err) console.error('Error writing transaction log:', err);
+        });
+    }
+
+    // Clean up old transactions
+    if (transactionHistory.length > 1000) {
+        transactionHistory.splice(0, transactionHistory.length - 1000);
+    }
+}, 60000); // Run every minute
