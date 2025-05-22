@@ -28,9 +28,67 @@ const server = http.createServer((req, res) => {
 const wss = new WebSocket.Server({ server });
 
 // Data structures
-const clients = new Map();          // Active connections: {walletId: ws}
-const pendingTransactions = new Map(); // Pending transactions: {walletId: [transactions]}
-const transactionHistory = [];      // Complete transaction log
+const clients = new Map();
+const pendingTransactions = new Map();
+const transactionHistory = [];
+
+// Function to return funds to sender
+function returnFundsToSender(tx) {
+    const pendingTxs = pendingTransactions.get(tx.to) || [];
+    const txIndex = pendingTxs.findIndex(t => t.id === tx.id);
+    
+    if (txIndex !== -1) {
+        pendingTxs.splice(txIndex, 1);
+        if (pendingTxs.length === 0) {
+            pendingTransactions.delete(tx.to);
+        }
+        
+        tx.status = 'returned';
+        tx.returnTimestamp = new Date().toISOString();
+        
+        const senderWs = clients.get(tx.from);
+        if (senderWs && senderWs.readyState === WebSocket.OPEN) {
+            senderWs.send(JSON.stringify({
+                type: 'transaction_returned',
+                ...tx,
+                message: `Funds returned - recipient did not claim within 1 hour`
+            }));
+        }
+        
+        transactionHistory.push(tx);
+        console.log(`Funds returned to ${tx.from} - recipient ${tx.to} did not claim within 1 hour`);
+    }
+}
+
+// Load pending transactions on startup
+function loadPendingTransactions() {
+    try {
+        if (fs.existsSync('pending_transactions.json')) {
+            const data = fs.readFileSync('pending_transactions.json', 'utf8');
+            const savedPending = JSON.parse(data);
+            
+            for (const [walletId, txs] of Object.entries(savedPending)) {
+                pendingTransactions.set(walletId, txs.map(tx => {
+                    const remainingTime = new Date(tx.expiresAt).getTime() - Date.now();
+                    if (remainingTime > 0) {
+                        tx.returnTimeout = setTimeout(() => {
+                            returnFundsToSender(tx);
+                        }, remainingTime);
+                        return tx;
+                    } else {
+                        returnFundsToSender(tx);
+                        return null;
+                    }
+                }).filter(tx => tx !== null));
+            }
+            console.log(`Loaded pending transactions from file`);
+        }
+    } catch (e) {
+        console.error('Error loading pending transactions:', e);
+    }
+}
+
+loadPendingTransactions();
 
 wss.on('connection', (ws) => {
     console.log('New connection established');
@@ -40,7 +98,6 @@ wss.on('connection', (ws) => {
             const data = JSON.parse(message);
 
             if (data.type === 'register') {
-                // Handle wallet registration
                 if (clients.has(data.walletId)) {
                     ws.send(JSON.stringify({
                         type: 'error',
@@ -52,11 +109,15 @@ wss.on('connection', (ws) => {
                 clients.set(data.walletId, ws);
                 console.log(`Wallet registered: ${data.walletId}`);
 
-                // Process any pending transactions for this wallet
                 if (pendingTransactions.has(data.walletId)) {
                     const pending = pendingTransactions.get(data.walletId);
                     pending.forEach(tx => {
+                        if (tx.returnTimeout) {
+                            clearTimeout(tx.returnTimeout);
+                        }
+                        
                         tx.status = 'completed';
+                        tx.completedTimestamp = new Date().toISOString();
                         ws.send(JSON.stringify({
                             type: 'transaction',
                             ...tx
@@ -75,7 +136,6 @@ wss.on('connection', (ws) => {
             } else if (data.type === 'transaction') {
                 console.log(`Processing transaction from ${data.from} to ${data.to} for ${data.amount} FTC`);
 
-                // Validate transaction
                 if (!data.from || !data.to || !data.amount) {
                     ws.send(JSON.stringify({
                         type: 'error',
@@ -101,40 +161,52 @@ wss.on('connection', (ws) => {
                     return;
                 }
 
-                // Create transaction record
+                // Transaction with 1 hour expiration
                 const tx = {
                     id: `tx-${Date.now()}`,
                     from: data.from,
                     to: data.to,
                     amount: amount.toFixed(6),
                     timestamp: new Date().toISOString(),
-                    status: 'pending'
+                    status: 'pending',
+                    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
                 };
 
-                // Try to deliver to recipient
                 const recipientWs = clients.get(data.to);
                 if (recipientWs && recipientWs.readyState === WebSocket.OPEN) {
                     tx.status = 'completed';
+                    tx.completedTimestamp = new Date().toISOString();
                     recipientWs.send(JSON.stringify({
                         type: 'transaction',
                         ...tx
                     }));
                 } else {
-                    // Store for later delivery
                     if (!pendingTransactions.has(data.to)) {
                         pendingTransactions.set(data.to, []);
                     }
+                    
+                    tx.returnTimeout = setTimeout(() => {
+                        returnFundsToSender(tx);
+                    }, 60 * 60 * 1000); // 1 hour
+                    
                     pendingTransactions.get(data.to).push(tx);
                     console.log(`Transaction queued for offline recipient: ${data.to}`);
                 }
 
-                // Add to history and confirm to sender
                 transactionHistory.push(tx);
                 ws.send(JSON.stringify({
                     type: 'transaction_success',
                     ...tx
                 }));
 
+            } else if (data.type === 'get_transactions') {
+                const walletHistory = transactionHistory.filter(
+                    tx => tx.from === data.walletId || tx.to === data.walletId
+                );
+                ws.send(JSON.stringify({
+                    type: 'transaction_history',
+                    transactions: walletHistory
+                }));
             }
         } catch (error) {
             console.error('Error processing message:', error);
@@ -146,7 +218,6 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        // Clean up disconnected clients
         for (const [walletId, clientWs] of clients.entries()) {
             if (clientWs === ws) {
                 clients.delete(walletId);
@@ -170,23 +241,20 @@ server.listen(PORT, () => {
 
 // Periodic maintenance
 setInterval(() => {
-    // Save transaction history to disk
     if (transactionHistory.length > 0) {
-        const logEntry = {
-            timestamp: new Date().toISOString(),
-            transactionCount: transactionHistory.length,
-            pendingTransactions: Array.from(pendingTransactions.entries()).reduce((acc, [walletId, txs]) => {
-                acc[walletId] = txs.length;
-                return acc;
-            }, {})
-        };
-
-        fs.appendFile('transactions.log', JSON.stringify(logEntry) + '\n', (err) => {
-            if (err) console.error('Error writing transaction log:', err);
-        });
+        fs.appendFileSync('transaction_history.log', 
+            JSON.stringify(transactionHistory.slice(-100)) + '\n');
     }
 
-    // Clean up old transactions
+    const pendingToSave = {};
+    for (const [walletId, txs] of pendingTransactions.entries()) {
+        pendingToSave[walletId] = txs.map(tx => {
+            const { returnTimeout, ...rest } = tx;
+            return rest;
+        });
+    }
+    fs.writeFileSync('pending_transactions.json', JSON.stringify(pendingToSave));
+
     if (transactionHistory.length > 1000) {
         transactionHistory.splice(0, transactionHistory.length - 1000);
     }
