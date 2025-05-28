@@ -3,28 +3,28 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const qrcode = require('qrcode-terminal');
 
-// Configuración para Render
+// Configuración
 const PORT = process.env.PORT || 3000;
-const SESSION_FILE_PATH = path.join(__dirname, '.wwebjs_auth', 'session.json');
+const SESSION_DIR = path.join(__dirname, '.wwebjs_auth');
+const SESSION_FILE_PATH = path.join(SESSION_DIR, 'session.json');
 
-// Verificar/Crear directorio de sesión
-if (!fs.existsSync(path.dirname(SESSION_FILE_PATH))) {
-  fs.mkdirSync(path.dirname(SESSION_FILE_PATH), { recursive: true };
+// Crear directorio de sesión si no existe
+if (!fs.existsSync(SESSION_DIR)) {
+  fs.mkdirSync(SESSION_DIR, { recursive: true });
 }
 
-// Variables de estado
+// Estado del servidor
 let authCode = null;
 let clientReady = false;
 let lastGeneratedCodeTime = null;
 const CODE_EXPIRATION_MINUTES = 5;
 let qrCodeBackup = null;
 
-// Configuración del cliente WhatsApp
+// Cliente WhatsApp
 const client = new Client({
-  authStrategy: new LocalAuth({
-    dataPath: path.dirname(SESSION_FILE_PATH)
-  }),
+  authStrategy: new LocalAuth({ dataPath: SESSION_DIR }),
   puppeteer: {
     headless: true,
     args: [
@@ -44,7 +44,7 @@ const client = new Client({
   }
 });
 
-// Generar código con expiración
+// Generar código de autenticación
 function generateAuthCode() {
   authCode = Math.floor(100000 + Math.random() * 900000).toString();
   lastGeneratedCodeTime = new Date();
@@ -52,17 +52,18 @@ function generateAuthCode() {
   return authCode;
 }
 
-// Verificar si el código ha expirado
+// Verificar expiración del código
 function isCodeExpired() {
   if (!lastGeneratedCodeTime) return true;
   const expirationTime = new Date(lastGeneratedCodeTime.getTime() + CODE_EXPIRATION_MINUTES * 60000);
   return new Date() > expirationTime;
 }
 
-// Eventos del cliente WhatsApp
+// Eventos del cliente
 client.on('qr', qr => {
   qrCodeBackup = qr;
-  console.log('Código QR generado (respaldo):', qr);
+  qrcode.generate(qr, { small: true });
+  console.log('Escanea este QR en WhatsApp:');
 });
 
 client.on('authenticated', () => {
@@ -71,118 +72,59 @@ client.on('authenticated', () => {
 });
 
 client.on('ready', () => {
-  console.log('Cliente de WhatsApp listo!');
+  console.log('Cliente listo!');
   clientReady = true;
 });
 
 client.on('disconnected', (reason) => {
   console.log('Cliente desconectado:', reason);
   clientReady = false;
-  // Reiniciar el cliente después de 5 segundos
-  setTimeout(() => {
-    console.log('Reiniciando cliente...');
-    client.initialize();
-  }, 5000);
+  setTimeout(() => client.initialize(), 5000);
 });
 
-client.on('auth_failure', msg => {
-  console.error('Autenticación fallida:', msg);
-});
-
-client.initialize().catch(err => {
-  console.error('Error al inicializar el cliente:', err);
-});
+client.initialize().catch(err => console.error('Error al iniciar:', err));
 
 // Configuración de Express
 const app = express();
 app.use(bodyParser.json());
-app.use(express.static('public')); // Para servir archivos estáticos
 
-// Endpoints de la API
+// Endpoints
 app.get('/get-code', (req, res) => {
-  const code = generateAuthCode();
-  res.json({ 
-    code,
+  res.json({
+    code: generateAuthCode(),
+    qr_code: qrCodeBackup,
     expires_in: `${CODE_EXPIRATION_MINUTES} minutos`,
-    server_time: new Date().toISOString(),
-    qr_code: qrCodeBackup // Opcional: enviar QR como respaldo
+    server_time: new Date().toISOString()
   });
 });
 
 app.post('/verify-code', (req, res) => {
   const { code } = req.body;
   
-  if (!code) {
-    return res.status(400).json({ error: 'Código requerido' });
-  }
-  
-  if (isCodeExpired()) {
-    return res.status(403).json({ error: 'El código ha expirado' });
-  }
-  
-  if (code !== authCode) {
-    return res.status(403).json({ error: 'Código inválido' });
-  }
-  
-  res.json({ 
+  if (!code) return res.status(400).json({ error: 'Código requerido' });
+  if (isCodeExpired()) return res.status(403).json({ error: 'Código expirado' });
+  if (code !== authCode) return res.status(403).json({ error: 'Código inválido' });
+
+  res.json({
     success: true,
     status: clientReady ? 'ready' : 'initializing',
-    message: clientReady ? 
-      'Dispositivo vinculado y cliente listo' : 
-      'Dispositivo vinculado, esperando inicialización del cliente'
+    session_exists: fs.existsSync(SESSION_FILE_PATH)
   });
-});
-
-app.get('/chat-list', async (req, res) => {
-  if (!clientReady) {
-    return res.status(503).json({ error: 'Cliente de WhatsApp no listo' });
-  }
-  
-  try {
-    const chats = await client.getChats();
-    const simplifiedChats = chats.map(chat => ({
-      id: chat.id._serialized,
-      name: chat.name,
-      lastMessage: chat.lastMessage?.body || 'Sin mensajes',
-      timestamp: chat.lastMessage?.timestamp || 0,
-      isGroup: chat.isGroup
-    }));
-    
-    res.json({ chats: simplifiedChats });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/qr-backup', (req, res) => {
-  if (!qrCodeBackup) {
-    return res.status(404).json({ error: 'No hay código QR disponible' });
-  }
-  res.json({ qr_code: qrCodeBackup });
 });
 
 app.get('/status', (req, res) => {
   res.json({
     status: 'running',
     whatsapp_status: clientReady ? 'ready' : 'initializing',
-    server_time: new Date().toISOString(),
-    code_active: !isCodeExpired(),
-    session_exists: fs.existsSync(SESSION_FILE_PATH)
+    code_active: !isCodeExpired()
   });
 });
 
-// Endpoint para enviar mensajes
 app.post('/send-message', async (req, res) => {
-  if (!clientReady) {
-    return res.status(503).json({ error: 'Cliente no listo' });
-  }
-
-  const { number, message } = req.body;
-  if (!number || !message) {
-    return res.status(400).json({ error: 'Número y mensaje son requeridos' });
-  }
+  if (!clientReady) return res.status(503).json({ error: 'Cliente no listo' });
 
   try {
+    const { number, message } = req.body;
     const chatId = number.includes('@') ? number : `${number}@c.us`;
     await client.sendMessage(chatId, message);
     res.json({ success: true });
@@ -193,8 +135,7 @@ app.post('/send-message', async (req, res) => {
 
 // Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en el puerto ${PORT}`);
-  console.log(`Para vincular tu dispositivo:`);
-  console.log(`1. Visita /get-code para obtener el código`);
-  console.log(`2. O usa /qr-backup como alternativa`);
+  console.log(`Servidor en http://localhost:${PORT}`);
+  console.log(`• Use /get-code para obtener código de vinculación`);
+  console.log(`• Estado actual: ${clientReady ? 'READY' : 'INITIALIZING'}`);
 });
