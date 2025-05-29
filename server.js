@@ -297,7 +297,7 @@ async function handleTransaction(ws, data) {
         }
 
         const amount = parseFloat(data.amount);
-        if (isNaN(amount) {
+        if (isNaN(amount)) {
             throw new Error('Amount must be a number');
         }
         
