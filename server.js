@@ -33,7 +33,7 @@ wss.on('connection', (ws) => {
                 // Registrar nuevo usuario
                 user.id = data.id;
                 user.name = data.name;
-                user.room = data.room || 'public';
+                user.room = data.room || 'privado';
                 users.set(data.id, user);
                 
                 // Notificar a todos
