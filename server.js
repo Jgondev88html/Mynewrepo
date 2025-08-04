@@ -68,7 +68,7 @@ wss.on('connection', (ws) => {
                 
                 // Notificar cambio de sala
                 broadcastSystemMessage(`${user.name} ha dejado el chat.`, oldRoom);
-                broadcastSystemMessage(`${user.name} se ha unido al chat.`, user.room);
+                broadcastSystemMessage(`${user.name} se ha unido al chat.`);
                 broadcastUserList();
                 break;
         }
