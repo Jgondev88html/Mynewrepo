@@ -1,159 +1,110 @@
-const express = require('express');
-const WebSocket = require('ws');
-const http = require('http');
-const path = require('path');
+const express = require("express");
+const WebSocket = require("ws");
+const { IgApiClient } = require("instagram-private-api");
+const http = require("http");
 
+// Configura Instagram
+const ig = new IgApiClient();
+const IG_USERNAME = "TU_USUARIO_DE_INSTAGRAM";
+const IG_PASSWORD = "TU_CONTRASEÑA";
+
+// Fake DB (en producción usa MongoDB/MySQL)
+let users = [];
+let tasks = [
+    { userId: "user1", username: "usuario_popular1", reward: 10 },
+    { userId: "user2", username: "usuario_popular2", reward: 10 },
+    { userId: "user3", username: "usuario_popular3", reward: 15 }
+];
+
+// Inicia Express y WebSocket
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Configuración
-const PORT = process.env.PORT || 3000;
+// Middleware para servir el frontend
+app.use(express.static("public"));
 
-// Almacén de usuarios conectados
-const users = new Map();
+// Conectar a Instagram
+(async () => {
+    ig.state.generateDevice(IG_USERNAME);
+    await ig.account.login(IG_USERNAME, IG_PASSWORD);
+    console.log("✅ Conectado a Instagram");
+})();
 
-// Servir archivos estáticos
-app.use(express.static(path.join(__dirname, 'public')));
+// WebSocket Connection
+wss.on("connection", (ws) => {
+    console.log("🔌 Nuevo cliente conectado");
 
-// Ruta principal
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// WebSocket server
-wss.on('connection', (ws) => {
-    let user = { id: '', name: '', room: 'public', ws };
-
-    ws.on('message', (message) => {
+    ws.on("message", async (message) => {
         const data = JSON.parse(message);
-        
-        switch (data.type) {
-            case 'register':
-                // Registrar nuevo usuario
-                user.id = data.id;
-                user.name = data.name;
-                user.room = data.room || 'privado';
-                users.set(data.id, user);
-                
-                // Notificar a todos
-                broadcastUserList();
-                broadcastSystemMessage(`${user.name} se ha unido al chat ${user.room}.`, user.room);
-                break;
-                
-            case 'public':
-                // Mensaje público a la sala actual
-                broadcastMessage({
-                    type: 'public',
-                    sender: { id: user.id, name: user.name },
-                    message: data.message,
-                    timestamp: new Date().toISOString()
-                }, user.room);
-                break;
-                
-            case 'private':
-                // Mensaje privado
-                sendPrivateMessage(
-                    user,
-                    data.recipientId,
-                    data.message
-                );
-                break;
-                
-            case 'changeRoom':
-                // Cambiar de sala
-                const oldRoom = user.room;
-                user.room = data.room;
-                users.set(user.id, user);
-                
-                // Notificar cambio de sala
-                broadcastSystemMessage(`${user.name} ha dejado el chat.`, oldRoom);
-                broadcastSystemMessage(`${user.name} se ha unido al chat.`);
-                broadcastUserList();
-                break;
-        }
-    });
 
-    ws.on('close', () => {
-        if (user.id) {
-            users.delete(user.id);
-            broadcastSystemMessage(`${user.name} se ha desconectado.`, user.room);
-            broadcastUserList();
+        switch (data.type) {
+            case "login":
+                try {
+                    const userInfo = await ig.user.searchExact(data.username);
+                    const user = {
+                        id: Date.now().toString(),
+                        instagramUsername: userInfo.username,
+                        profilePic: userInfo.profile_pic_url,
+                        coins: 0,
+                        followers: userInfo.follower_count
+                    };
+                    users.push(user);
+                    ws.send(JSON.stringify({
+                        type: "login_success",
+                        user
+                    }));
+                    // Enviar tareas disponibles
+                    ws.send(JSON.stringify({
+                        type: "new_tasks",
+                        tasks
+                    }));
+                } catch (error) {
+                    ws.send(JSON.stringify({
+                        type: "error",
+                        message: "Usuario no encontrado"
+                    }));
+                }
+                break;
+
+            case "follow_user":
+                try {
+                    // Simular seguir al usuario (en producción usar ig.friendship.create)
+                    const currentUser = users.find(u => u.id === data.currentUserId);
+                    const task = tasks.find(t => t.userId === data.targetUserId);
+                    
+                    if (currentUser && task) {
+                        currentUser.coins += task.reward;
+                        ws.send(JSON.stringify({
+                            type: "update_user",
+                            user: currentUser
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Error al seguir usuario:", error);
+                }
+                break;
+
+            case "buy_followers":
+                try {
+                    const user = users.find(u => u.id === data.userId);
+                    if (user && user.coins >= 50) {
+                        user.coins -= 50;
+                        user.followers += 100;
+                        ws.send(JSON.stringify({
+                            type: "update_user",
+                            user
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Error comprando seguidores:", error);
+                }
+                break;
         }
     });
 });
-
-// Funciones auxiliares
-function broadcastUserList() {
-    const userList = Array.from(users.values()).map(u => ({
-        id: u.id,
-        name: u.name,
-        room: u.room
-    }));
-    
-    const message = JSON.stringify({
-        type: 'userList',
-        users: userList
-    });
-    
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
-        }
-    });
-}
-
-function broadcastMessage(message, room = 'public') {
-    const formattedMessage = JSON.stringify(message);
-    
-    wss.clients.forEach(client => {
-        const user = getUserByClient(client);
-        if (client.readyState === WebSocket.OPEN && user && user.room === room) {
-            client.send(formattedMessage);
-        }
-    });
-}
-
-function broadcastSystemMessage(text, room = 'public') {
-    broadcastMessage({
-        type: 'system',
-        message: text,
-        timestamp: new Date().toISOString()
-    }, room);
-}
-
-function sendPrivateMessage(sender, recipientId, messageText) {
-    const recipient = users.get(recipientId);
-    if (!recipient) return;
-
-    const message = {
-        type: 'private',
-        sender: { id: sender.id, name: sender.name },
-        recipientId: recipient.id,
-        message: messageText,
-        timestamp: new Date().toISOString(),
-        sent: false
-    };
-    
-    // Enviar al destinatario
-    if (recipient.ws.readyState === WebSocket.OPEN) {
-        recipient.ws.send(JSON.stringify(message));
-    }
-    
-    // Enviar copia al remitente
-    if (sender.ws.readyState === WebSocket.OPEN) {
-        sender.ws.send(JSON.stringify({
-            ...message,
-            sent: true
-        }));
-    }
-}
-
-function getUserByClient(client) {
-    return Array.from(users.values()).find(u => u.ws === client);
-}
 
 // Iniciar servidor
-server.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
+server.listen(3000, () => {
+    console.log("🚀 Servidor corriendo en http://localhost:3000");
 });
