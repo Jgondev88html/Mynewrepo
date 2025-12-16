@@ -10,7 +10,7 @@ const ALLOWED_LINKS = ['youtube.com', 'instagram.com', 'facebook.com', 'drive.go
 
 // Cache para evitar bienvenidas duplicadas
 const welcomeCache = new Map();
-const MAX_CACHE_TIME = 60000; // 1 minuto
+const MAX_CACHE_TIME = 60000;
 
 const app = express();
 const server = http.createServer(app);
@@ -44,7 +44,9 @@ client.on('qr', async (qr) => {
     try {
         qrImage = await QRCode.toDataURL(qr, { width: 300, margin: 1 });
         io.emit('qr_update', qrImage);
-    } catch (err) {}
+    } catch (err) {
+        console.log('Error generando QR:', err.message);
+    }
 });
 
 client.on('ready', () => {
@@ -82,8 +84,7 @@ client.on('group_join', async (notification) => {
         }, MAX_CACHE_TIME);
         
         // Enviar mensaje de bienvenida
-        const welcomeMessage = `
-🎊 *¡BIENVENIDO/A AL GRUPO!* 🎊
+        const welcomeMessage = `🎊 *¡BIENVENIDO/A AL GRUPO!* 🎊
 
 Hola @${contact.id.user} 👋
 
@@ -97,8 +98,7 @@ Hola @${contact.id.user} 👋
 
 💡 *Consejo:* Preséntate y cuéntanos de qué te gustaría hablar.
 
-¡Disfruta tu estadía! 😊
-        `.trim();
+¡Disfruta tu estadía! 😊`;
         
         await chat.sendMessage(welcomeMessage);
         console.log(`✅ Bienvenida enviada a ${contact.pushname || contact.id.user}`);
@@ -108,7 +108,7 @@ Hola @${contact.id.user} 👋
     }
 });
 
-// DETECTAR cuando alguien SALE del grupo (opcional)
+// DETECTAR cuando alguien SALE del grupo
 client.on('group_leave', async (notification) => {
     console.log('👋 Alguien salió del grupo');
     
@@ -121,11 +121,11 @@ client.on('group_leave', async (notification) => {
             `¡Que le vaya bien!`
         );
     } catch (error) {
-        // Ignorar errores en despedidas
+        // Ignorar errores
     }
 });
 
-// DETECCIÓN RÁPIDA DE ENLACES (igual que antes)
+// DETECCIÓN RÁPIDA DE ENLACES
 client.on('message', async (message) => {
     if (message.fromMe) return;
     
@@ -168,7 +168,7 @@ io.on('connection', (socket) => {
     if (qrImage) socket.emit('qr_update', qrImage);
 });
 
-// Página web MEJORADA
+// Página web CORREGIDA (sin errores de sintaxis)
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -328,13 +328,7 @@ app.get('/', (req, res) => {
                 if (connected) {
                     statusEl.textContent = '✅ Bot conectado y activo';
                     statusEl.className = 'connected';
-                    qrPlaceholder.innerHTML = `
-                        <div style="text-align: center;">
-                            <div style="color: #4caf50; font-size: 40px; margin: 10px 0;">✓</div>
-                            <p style="color: #388e3c; font-weight: bold;">Bot funcionando correctamente</p>
-                            <p style="color: #666; font-size: 12px; margin-top: 5px;">Bienvenidas automáticas activadas</p>
-                        </div>
-                    `;
+                    qrPlaceholder.innerHTML = '<div style="text-align: center;"><div style="color: #4caf50; font-size: 40px; margin: 10px 0;">✓</div><p style="color: #388e3c; font-weight: bold;">Bot funcionando correctamente</p><p style="color: #666; font-size: 12px; margin-top: 5px;">Bienvenidas automáticas activadas</p></div>';
                     qrPlaceholder.style.display = 'block';
                     qrImg.style.display = 'none';
                 }
@@ -347,11 +341,11 @@ app.get('/', (req, res) => {
 
 // Iniciar
 server.listen(PORT, () => {
-    console.log(`🚀 Bot con bienvenidas en: http://localhost:${PORT}`);
-    console.log(`🎉 Funciones:`);
-    console.log(`   • Bienvenida automática al unirse`);
-    console.log(`   • Mensaje de despedida`);
-    console.log(`   • Elimina enlaces no permitidos`);
-    console.log(`   • Solo admins pueden enviar links`);
+    console.log(\`🚀 Bot con bienvenidas en: http://localhost:\${PORT}\`);
+    console.log(\`🎉 Funciones:\`);
+    console.log(\`   • Bienvenida automática al unirse\`);
+    console.log(\`   • Mensaje de despedida\`);
+    console.log(\`   • Elimina enlaces no permitidos\`);
+    console.log(\`   • Solo admins pueden enviar links\`);
     client.initialize();
 });
