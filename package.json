@@ -1,5 +1,5 @@
 {
-  "name": "whatsapp-bot",
+  "name": "whatsapp-bot-welcome",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
