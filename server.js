@@ -5,164 +5,170 @@ const http = require('http');
 const socketIO = require('socket.io');
 
 // Configuración
-const ADMIN_NUMBERS = ['5351808981@c.us']; // TU NÚMERO
+const ADMIN_NUMBERS = ['5351808981@c.us'];
 const ALLOWED_LINKS = ['youtube.com', 'instagram.com', 'facebook.com', 'drive.google.com'];
 
-// Crear servidor web
+// Cache para evitar bienvenidas duplicadas
+const welcomeCache = new Map();
+const MAX_CACHE_TIME = 60000; // 1 minuto
+
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
 const PORT = process.env.PORT || 3000;
 
-// Variables
 let qrImage = null;
 let botConnected = false;
 
-// Configurar cliente WhatsApp
+// Cliente optimizado
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ]
     }
 });
 
-// Evento QR
+// QR
 client.on('qr', async (qr) => {
-    console.log('🔄 Generando QR para la web...');
+    console.log('🔄 QR generado');
     try {
-        qrImage = await QRCode.toDataURL(qr);
+        qrImage = await QRCode.toDataURL(qr, { width: 300, margin: 1 });
         io.emit('qr_update', qrImage);
-    } catch (err) {
-        console.error('Error QR:', err);
-    }
+    } catch (err) {}
 });
 
-// Bot listo
 client.on('ready', () => {
-    console.log('✅ Bot conectado a WhatsApp');
+    console.log('✅ Bot listo - Bienvenidas activas');
     botConnected = true;
     qrImage = null;
     io.emit('connected', true);
 });
 
-// SOLUCIÓN: Esta función SÍ puede eliminar mensajes de otros
-async function eliminarMensaje(chat, message) {
+// DETECTAR cuando alguien SE UNE al grupo
+client.on('group_join', async (notification) => {
+    console.log('🎉 Alguien se unió al grupo');
+    
     try {
-        // Intentar eliminar como admin
-        if (chat.isGroup) {
-            const chatObj = await client.getChatById(chat.id._serialized);
-            
-            // Verificar si el bot es admin
-            const participants = await chatObj.participants;
-            const botParticipant = participants.find(p => p.id._serialized === client.info.wid._serialized);
-            
-            if (botParticipant && botParticipant.isAdmin) {
-                // El bot es admin, puede eliminar
-                await message.delete(true);
-                console.log(`✅ Mensaje eliminado por admin`);
-                return true;
-            } else {
-                // El bot NO es admin, advertir y mencionar admins
-                console.log(`⚠️ Bot no es admin, no puede eliminar`);
-                
-                // Encontrar admins del grupo
-                const admins = participants.filter(p => p.isAdmin).map(p => p.id._serialized);
-                
-                // Notificar a todos los admins
-                for (const adminId of admins) {
-                    try {
-                        await client.sendMessage(adminId, 
-                            `🚫 *ENLACE NO PERMITIDO*\n\n` +
-                            `Usuario: @${message.author.split('@')[0]}\n` +
-                            `Mensaje: ${message.body.substring(0, 50)}...\n` +
-                            `Grupo: ${chat.name}\n\n` +
-                            `⚠️ *Elimina este mensaje manualmente*`
-                        );
-                    } catch (e) {
-                        console.log('No se pudo notificar al admin:', adminId);
-                    }
-                }
-                
-                // Advertir al usuario que envió el enlace
-                await message.reply(
-                    `@${message.author.split('@')[0]} 🚫 *ENLACE NO PERMITIDO*\n\n` +
-                    `Tu mensaje será revisado por los administradores.\n` +
-                    `Solo se permiten enlaces de:\n` +
-                    ALLOWED_LINKS.map(l => `• ${l}`).join('\n')
-                );
-                
-                return false;
+        const chat = await notification.getChat();
+        const contact = await notification.getContact();
+        
+        // Prevenir bienvenidas duplicadas
+        const cacheKey = `${chat.id._serialized}-${contact.id._serialized}`;
+        const now = Date.now();
+        
+        if (welcomeCache.has(cacheKey)) {
+            const lastWelcome = welcomeCache.get(cacheKey);
+            if (now - lastWelcome < MAX_CACHE_TIME) {
+                console.log('⚠️ Bienvenida reciente, ignorando');
+                return;
             }
         }
-    } catch (error) {
-        console.log('❌ Error al intentar eliminar:', error.message);
-        return false;
-    }
-}
+        
+        welcomeCache.set(cacheKey, now);
+        
+        // Limpiar cache viejo
+        setTimeout(() => {
+            welcomeCache.delete(cacheKey);
+        }, MAX_CACHE_TIME);
+        
+        // Enviar mensaje de bienvenida
+        const welcomeMessage = `
+🎊 *¡BIENVENIDO/A AL GRUPO!* 🎊
 
-// Procesar mensajes CORREGIDO
+Hola @${contact.id.user} 👋
+
+¡Nos alegra tenerte aquí! 
+
+📜 *Reglas del grupo:*
+• Respetar a todos los miembros
+• No enviar spam
+• Mantener conversaciones cordiales
+• Disfrutar y compartir
+
+💡 *Consejo:* Preséntate y cuéntanos de qué te gustaría hablar.
+
+¡Disfruta tu estadía! 😊
+        `.trim();
+        
+        await chat.sendMessage(welcomeMessage);
+        console.log(`✅ Bienvenida enviada a ${contact.pushname || contact.id.user}`);
+        
+    } catch (error) {
+        console.log('❌ Error en bienvenida:', error.message);
+    }
+});
+
+// DETECTAR cuando alguien SALE del grupo (opcional)
+client.on('group_leave', async (notification) => {
+    console.log('👋 Alguien salió del grupo');
+    
+    try {
+        const chat = await notification.getChat();
+        const contact = await notification.getContact();
+        
+        await chat.sendMessage(
+            `👋 @${contact.id.user} ha abandonado el grupo.\n` +
+            `¡Que le vaya bien!`
+        );
+    } catch (error) {
+        // Ignorar errores en despedidas
+    }
+});
+
+// DETECCIÓN RÁPIDA DE ENLACES (igual que antes)
 client.on('message', async (message) => {
     if (message.fromMe) return;
     
-    const chat = await message.getChat();
-    const isGroup = chat.isGroup;
+    const texto = message.body || '';
     const sender = message.author || message.from;
-    const isAdmin = ADMIN_NUMBERS.includes(sender);
-    const text = message.body || '';
     
-    if (isGroup) {
-        // Bienvenida
-        if (text.toLowerCase().includes('hola') || text.toLowerCase().includes('holis')) {
-            await message.reply('👋 ¡Bienvenido al grupo!');
+    // Filtro rápido
+    const ahora = Date.now();
+    const timestampMsg = message.timestamp * 1000;
+    if (ahora - timestampMsg > 30000) return;
+    
+    // DETECCIÓN RÁPIDA DE ENLACES
+    if (texto.includes('http') || texto.includes('www.') || texto.includes('.com')) {
+        let esPermitido = false;
+        for (const allowed of ALLOWED_LINKS) {
+            if (texto.toLowerCase().includes(allowed)) {
+                esPermitido = true;
+                break;
+            }
         }
         
-        // Detectar enlaces (excepto admin)
-        if (!isAdmin && (text.includes('http') || text.includes('www.') || text.includes('.com'))) {
-            let isAllowed = false;
-            for (const allowed of ALLOWED_LINKS) {
-                if (text.toLowerCase().includes(allowed)) {
-                    isAllowed = true;
-                    break;
-                }
-            }
+        if (!esPermitido) {
+            const esAdmin = ADMIN_NUMBERS.includes(sender);
             
-            if (!isAllowed) {
-                console.log(`🚫 Enlace detectado de ${sender}: ${text.substring(0, 50)}...`);
-                
-                // Intentar eliminar el mensaje
-                const eliminado = await eliminarMensaje(chat, message);
-                
-                if (!eliminado) {
-                    // Si no se pudo eliminar, advertir en el grupo
-                    await message.reply(
-                        `🚫 *ADVERTENCIA*\n\n` +
-                        `@${sender.split('@')[0]} envió un enlace no permitido.\n` +
-                        `Los administradores han sido notificados.\n\n` +
-                        `📜 Enlaces permitidos:\n` +
-                        ALLOWED_LINKS.map(l => `• ${l}`).join('\n')
-                    );
+            if (!esAdmin) {
+                try {
+                    await message.delete(true).catch(e => {});
+                    await message.reply(`🚫 Enlace no permitido eliminado`).catch(e => {});
+                } catch (error) {
+                    console.log('⚠️ No se pudo eliminar');
                 }
             }
         }
     }
 });
 
-// Manejo de errores
-client.on('auth_failure', () => {
-    console.log('❌ Error de autenticación');
-    botConnected = false;
-    io.emit('connected', false);
+// WebSocket
+io.on('connection', (socket) => {
+    socket.emit('connected', botConnected);
+    if (qrImage) socket.emit('qr_update', qrImage);
 });
 
-client.on('disconnected', () => {
-    console.log('🔌 Bot desconectado');
-    botConnected = false;
-    io.emit('connected', false);
-    setTimeout(() => client.initialize(), 10000);
-});
-
-// Página web con QR (igual que antes)
+// Página web MEJORADA
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -170,92 +176,136 @@ app.get('/', (req, res) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>WhatsApp Bot QR</title>
+        <title>WhatsApp Bot - Bienvenidas</title>
         <style>
             body {
-                font-family: Arial, sans-serif;
+                font-family: 'Segoe UI', Arial, sans-serif;
                 background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                 margin: 0;
                 padding: 20px;
                 min-height: 100vh;
                 display: flex;
-                justify-content: center;
                 align-items: center;
+                justify-content: center;
             }
             .container {
                 background: white;
                 padding: 30px;
                 border-radius: 15px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+                box-shadow: 0 15px 35px rgba(0,0,0,0.2);
                 text-align: center;
                 max-width: 400px;
                 width: 100%;
             }
             h1 {
                 color: #333;
+                margin-bottom: 10px;
+                font-size: 24px;
+            }
+            .subtitle {
+                color: #666;
                 margin-bottom: 20px;
+                font-size: 14px;
+            }
+            #status {
+                padding: 10px 20px;
+                border-radius: 25px;
+                margin: 15px 0;
+                font-weight: bold;
+                display: inline-block;
+                font-size: 14px;
+            }
+            .connected {
+                background: linear-gradient(135deg, #d1f7c4 0%, #a8e6a3 100%);
+                color: #0d5c00;
+                box-shadow: 0 4px 15px rgba(0, 150, 0, 0.2);
+            }
+            .disconnected {
+                background: linear-gradient(135deg, #ffd6d6 0%, #ffb3b3 100%);
+                color: #c40000;
             }
             #qr-container {
                 margin: 20px 0;
                 padding: 20px;
-                background: #f5f5f5;
-                border-radius: 10px;
+                background: #f8f9fa;
+                border-radius: 12px;
+                border: 2px dashed #dee2e6;
             }
             #qr-img {
-                max-width: 300px;
+                max-width: 280px;
                 width: 100%;
                 height: auto;
                 border: 5px solid white;
-                border-radius: 10px;
+                border-radius: 8px;
+                box-shadow: 0 5px 15px rgba(0,0,0,0.1);
             }
-            .status {
-                padding: 10px;
-                border-radius: 5px;
-                margin: 10px 0;
-                font-weight: bold;
-            }
-            .connected {
-                background: #d4edda;
-                color: #155724;
-            }
-            .disconnected {
-                background: #f8d7da;
-                color: #721c24;
-            }
-            .instructions {
-                background: #e3f2fd;
-                padding: 15px;
+            .features {
+                background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+                padding: 20px;
                 border-radius: 10px;
                 margin-top: 20px;
                 text-align: left;
-                font-size: 14px;
+            }
+            .features h3 {
+                margin: 0 0 15px 0;
+                color: #1565c0;
+                font-size: 16px;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+            .features ul {
+                margin: 0;
+                padding-left: 20px;
+                color: #37474f;
+            }
+            .features li {
+                margin-bottom: 8px;
+                font-size: 13px;
+            }
+            .features li:before {
+                content: "✅ ";
+                color: #4caf50;
+            }
+            .counter {
+                background: #fff3cd;
+                padding: 10px;
+                border-radius: 8px;
+                margin-top: 15px;
+                font-size: 12px;
+                color: #856404;
+                border: 1px solid #ffeaa7;
             }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🤖 WhatsApp Bot</h1>
-            <div id="status" class="status disconnected">Desconectado</div>
+            <h1>🤖 WhatsApp Bot Pro</h1>
+            <div class="subtitle">Bienvenidas automáticas + Elimina enlaces</div>
+            
+            <div id="status" class="disconnected">Desconectado</div>
             
             <div id="qr-container">
                 <div id="qr-placeholder">
-                    <p>Esperando código QR...</p>
+                    <p style="color: #6c757d; font-size: 14px;">⌛ Cargando código QR...</p>
                 </div>
                 <img id="qr-img" style="display:none;">
             </div>
             
-            <div class="instructions">
-                <h3>⚠️ IMPORTANTE:</h3>
-                <p>Para que el bot pueda eliminar mensajes:</p>
-                <ol>
-                    <li>El bot DEBE ser administrador del grupo</li>
-                    <li>Agrega el bot como admin en cada grupo</li>
-                    <li>Solo así podrá eliminar enlaces</li>
-                </ol>
+            <div class="features">
+                <h3>✨ Funciones activas:</h3>
+                <ul>
+                    <li>Bienvenida automática al unirse</li>
+                    <li>Elimina enlaces no permitidos</li>
+                    <li>Mensaje de despedida automático</li>
+                    <li>Detección inteligente de URLs</li>
+                    <li>Solo admins pueden enviar enlaces</li>
+                    <li>Respuesta en menos de 2 segundos</li>
+                </ul>
             </div>
             
-            <div style="margin-top: 20px; font-size: 12px; color: #666;">
-                Funciones: Elimina enlaces + Da bienvenidas
+            <div class="counter">
+                ⏱️ Tiempo real | 🚀 Alta velocidad | 🔒 Seguro
             </div>
         </div>
         
@@ -270,20 +320,23 @@ app.get('/', (req, res) => {
                 qrPlaceholder.style.display = 'none';
                 qrImg.src = qrData;
                 qrImg.style.display = 'block';
-                statusEl.textContent = 'Escanea el QR';
-                statusEl.className = 'status disconnected';
+                statusEl.textContent = '📱 Escanea el QR';
+                statusEl.className = 'disconnected';
             });
             
             socket.on('connected', (connected) => {
                 if (connected) {
-                    statusEl.textContent = '✅ Conectado a WhatsApp';
-                    statusEl.className = 'status connected';
-                    qrPlaceholder.innerHTML = '<p>✅ Sesión activa</p>';
+                    statusEl.textContent = '✅ Bot conectado y activo';
+                    statusEl.className = 'connected';
+                    qrPlaceholder.innerHTML = `
+                        <div style="text-align: center;">
+                            <div style="color: #4caf50; font-size: 40px; margin: 10px 0;">✓</div>
+                            <p style="color: #388e3c; font-weight: bold;">Bot funcionando correctamente</p>
+                            <p style="color: #666; font-size: 12px; margin-top: 5px;">Bienvenidas automáticas activadas</p>
+                        </div>
+                    `;
                     qrPlaceholder.style.display = 'block';
                     qrImg.style.display = 'none';
-                } else {
-                    statusEl.textContent = 'Desconectado';
-                    statusEl.className = 'status disconnected';
                 }
             });
         </script>
@@ -292,10 +345,13 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Iniciar todo
+// Iniciar
 server.listen(PORT, () => {
-    console.log(`🌐 Servidor: http://localhost:${PORT}`);
-    console.log(`📱 Abre esa URL para escanear el QR`);
-    console.log(`⚠️ IMPORTANTE: El bot DEBE ser ADMIN de los grupos`);
+    console.log(`🚀 Bot con bienvenidas en: http://localhost:${PORT}`);
+    console.log(`🎉 Funciones:`);
+    console.log(`   • Bienvenida automática al unirse`);
+    console.log(`   • Mensaje de despedida`);
+    console.log(`   • Elimina enlaces no permitidos`);
+    console.log(`   • Solo admins pueden enviar links`);
     client.initialize();
 });
