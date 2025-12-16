@@ -16,8 +16,6 @@ const CONFIG = {
         'twitter.com',
         'x.com',
         'tiktok.com',
-        'whatsapp.com',
-        'web.whatsapp.com',
         'drive.google.com',
         'docs.google.com',
         'github.com',
@@ -33,6 +31,7 @@ const CONFIG = {
         'short.url',
         'tinyurl.com',
         'ow.ly',
+        'whatsapp.com',
         't.co',
         'goo.gl',
         'is.gd',
@@ -327,8 +326,7 @@ async function processGroupMessage(groupId, text, originalMessage) {
                     text: '🤖 *BOT ACTIVO*\n\n' +
                           'Funciones:\n' +
                           '• Elimina enlaces automáticamente\n' +
-                          '• Bienvenidas automáticas\n' +
-                          'Comandos: !bot, !admin, !links'
+                          '• Bienvenidas automáticas\n'
                 });
                 return;
             }
@@ -387,11 +385,7 @@ async function processGroupMessage(groupId, text, originalMessage) {
                 
                 // 2. Notificar al usuario
                 const warningMsg = `@${userNumber} 🚫 *ENLACE ELIMINADO*\n\n` +
-                                  `Has compartido ${blockedLinks.length} enlace(s) no permitido(s).\n\n` +
-                                  `📜 *Enlaces bloqueados:*\n` +
-                                  blockedLinks.map(l => `• ${l.substring(0, 50)}`).join('\n') +
-                                  `\n\n✅ *Enlaces permitidos:*\n` +
-                                  `Sitios como YouTube, Instagram, Facebook, etc.`;
+                                  `Has compartido ${blockedLinks.length} enlace(s) no permitido(s).\n\n`;
                 
                 await sock.sendMessage(groupId, { text: warningMsg });
                 
