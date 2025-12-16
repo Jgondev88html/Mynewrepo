@@ -1,43 +1,84 @@
-// server.js - BOT WHATSAPP COMPLETO PARA RENDER
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { createRequire } from 'module';
 import fs from 'fs/promises';
-import os from 'os';
 
-// Configuración global
+// ================= CONFIGURACIÓN =================
 const CONFIG = {
-    ADMIN_NUMBERS: ['5351808981@c.us'], // TU NÚMERO
+    // TU NÚMERO - FORMATO: 5215512345678@c.us
+    ADMIN_NUMBERS: ['5351808981@c.us'],
+    
+    // ENLACES PERMITIDOS (NO se eliminarán)
     ALLOWED_LINKS: [
         'youtube.com',
         'youtu.be',
-        'drive.google.com',
-        'docs.google.com',
         'instagram.com',
         'facebook.com',
         'twitter.com',
         'x.com',
         'tiktok.com',
         'whatsapp.com',
+        'web.whatsapp.com',
+        'drive.google.com',
+        'docs.google.com',
         'github.com',
-        'wikipedia.org'
+        'wikipedia.org',
+        'mercadolibre.com',
+        'amazon.com',
+        'paypal.com'
     ],
+    
+    // ENLACES BLOQUEADOS (SI se eliminarán)
+    BLOCKED_DOMAINS: [
+        'bit.ly',
+        'short.url',
+        'tinyurl.com',
+        'ow.ly',
+        't.co',
+        'goo.gl',
+        'is.gd',
+        'buff.ly',
+        'adf.ly',
+        'shorte.st',
+        'bc.vc',
+        'soo.gd',
+        'ity.im',
+        'v.gd',
+        'tr.im',
+        'qr.ae',
+        'cur.lv',
+        'u.to',
+        'j.mp',
+        'buzurl.com',
+        'cutt.us',
+        'u.bb',
+        'x.co',
+        'prettylinkpro.com',
+        'vir.al',
+        'scrnch.me',
+        'filoops.info',
+        'vurl.com',
+        'vzturl.com',
+        'link.zip'
+    ],
+    
     PORT: process.env.PORT || 3000,
     AUTH_DIR: './auth_data'
 };
 
-// Variables globales
+// ================= VARIABLES GLOBALES =================
 let makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion;
+let express, http, socketIO, qrcode;
 let sock = null;
 let isConnected = false;
 let currentQR = null;
-let express, http, socketIO, qrcode, cron;
+let app, server, io;
 
+// ================= CARGAR MÓDULOS =================
 async function loadModules() {
     try {
         console.log('📦 Cargando módulos...');
         
-        // Cargar Baileys dinámicamente
+        // Cargar Baileys
         const baileysModule = await import('@whiskeysockets/baileys');
         makeWASocket = baileysModule.default;
         useMultiFileAuthState = baileysModule.useMultiFileAuthState;
@@ -57,10 +98,7 @@ async function loadModules() {
         const qrcodeModule = await import('qrcode-terminal');
         qrcode = qrcodeModule.default;
         
-        const cronModule = await import('node-cron');
-        cron = cronModule.default;
-        
-        console.log('✅ Módulos cargados correctamente');
+        console.log('✅ Módulos cargados');
         return true;
     } catch (error) {
         console.error('❌ Error cargando módulos:', error);
@@ -68,20 +106,13 @@ async function loadModules() {
     }
 }
 
-// Crear directorio de autenticación
-async function ensureAuthDir() {
-    try {
-        await fs.mkdir(CONFIG.AUTH_DIR, { recursive: true });
-        console.log(`📁 Directorio de auth: ${CONFIG.AUTH_DIR}`);
-    } catch (error) {
-        console.error('Error creando directorio auth:', error);
-    }
-}
-
-// Conectar a WhatsApp
+// ================= CONECTAR WHATSAPP =================
 async function connectToWhatsApp() {
     try {
         console.log('📱 Conectando a WhatsApp...');
+        
+        // Crear directorio de auth
+        await fs.mkdir(CONFIG.AUTH_DIR, { recursive: true });
         
         const { state, saveCreds } = await useMultiFileAuthState(CONFIG.AUTH_DIR);
         const { version } = await fetchLatestBaileysVersion();
@@ -91,25 +122,18 @@ async function connectToWhatsApp() {
             printQRInTerminal: false,
             auth: state,
             defaultQueryTimeoutMs: 60000,
-            connectTimeoutMs: 60000,
-            keepAliveIntervalMs: 10000,
-            emitOwnEvents: true,
-            generateHighQualityLinkPreview: true,
-            syncFullHistory: false,
-            markOnlineOnConnect: false
+            connectTimeoutMs: 60000
         });
         
-        // Manejar eventos de conexión
+        // ================= EVENTOS DE CONEXIÓN =================
         sock.ev.on('connection.update', (update) => {
             const { connection, lastDisconnect, qr } = update;
             
             if (qr) {
-                console.log('🔄 Nuevo QR generado');
+                console.log('🔄 QR generado');
                 currentQR = qr;
-                // Mostrar QR en consola
                 qrcode.generate(qr, { small: true });
                 
-                // Emitir a sockets
                 if (io) {
                     io.emit('qr', qr);
                     io.emit('status', 'Escanea el QR');
@@ -120,20 +144,15 @@ async function connectToWhatsApp() {
                 console.log('🔌 Conexión cerrada');
                 isConnected = false;
                 
-                const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-                
+                const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
                 if (shouldReconnect) {
                     console.log('🔄 Reconectando en 5 segundos...');
-                    if (io) io.emit('status', 'Reconectando...');
                     setTimeout(() => connectToWhatsApp(), 5000);
-                } else {
-                    console.log('❌ Sesión cerrada, necesita nuevo QR');
-                    if (io) io.emit('status', 'Necesita nuevo QR');
                 }
             } 
             else if (connection === 'open') {
                 console.log('✅ CONECTADO A WHATSAPP');
+                console.log('👤 ID del bot:', sock.user?.id);
                 isConnected = true;
                 currentQR = null;
                 
@@ -142,22 +161,19 @@ async function connectToWhatsApp() {
                     io.emit('status', 'Conectado ✓');
                     io.emit('qr', null);
                 }
-                
-                // Enviar estado activo
-                sendPresenceUpdate();
             }
         });
         
         // Guardar credenciales
         sock.ev.on('creds.update', saveCreds);
         
-        // Manejar mensajes
+        // ================= MANEJAR MENSAJES =================
         sock.ev.on('messages.upsert', async (m) => {
             try {
                 const message = m.messages[0];
                 if (!message.message || message.key.fromMe) return;
                 
-                // Obtener tipo de mensaje y texto
+                // Obtener texto del mensaje
                 const messageType = Object.keys(message.message)[0];
                 let text = '';
                 
@@ -170,544 +186,430 @@ async function connectToWhatsApp() {
                 const sender = message.key.remoteJid;
                 const isGroup = sender.endsWith('@g.us');
                 
-                // Solo procesar grupos
                 if (isGroup && text) {
                     await processGroupMessage(sender, text, message);
                 }
             } catch (error) {
-                console.error('Error procesando mensaje:', error);
+                console.error('Error en messages.upsert:', error);
             }
         });
         
-        // Manejar participantes del grupo (bienvenidas)
+        // ================= BIENVENIDAS =================
         sock.ev.on('group-participants.update', async (update) => {
             try {
                 const { id, participants, action } = update;
                 
                 if (action === 'add') {
-                    console.log(`🎉 Nuevo miembro en grupo: ${id}`);
+                    console.log(`🎉 Nuevo miembro en ${id}`);
                     
                     for (const participant of participants) {
                         const userNumber = participant.split('@')[0];
-                        await sendWelcomeMessage(id, userNumber);
-                    }
-                }
-                
-                if (action === 'remove') {
-                    console.log(`👋 Miembro salió del grupo: ${id}`);
-                    
-                    for (const participant of participants) {
-                        const userNumber = participant.split('@')[0];
-                        await sendGoodbyeMessage(id, userNumber);
+                        
+                        // Mensaje de bienvenida
+                        const welcomeMsg = `🎊 *¡BIENVENIDO/A AL GRUPO!* 🎊
+
+Hola @${userNumber} 👋
+
+📜 *Reglas importantes:*
+• Respetar a todos
+• No spam ni enlaces sospechosos
+• Los enlaces serán eliminados automáticamente
+• Los admins pueden compartir cualquier enlace
+
+¡Disfruta tu estadía! 😊`;
+                        
+                        if (sock) {
+                            await sock.sendMessage(id, { text: welcomeMsg });
+                        }
                     }
                 }
             } catch (error) {
-                console.error('Error en evento grupo:', error);
+                console.error('Error en bienvenida:', error);
             }
         });
         
-        console.log('🤖 Bot listo para recibir mensajes');
+        console.log('🤖 Bot listo para eliminar enlaces');
         
     } catch (error) {
-        console.error('❌ Error conectando a WhatsApp:', error);
-        if (io) io.emit('status', 'Error de conexión');
-        
-        // Reintentar en 10 segundos
+        console.error('❌ Error conectando:', error);
         setTimeout(() => connectToWhatsApp(), 10000);
     }
 }
 
-// Procesar mensajes en grupos
-async function processGroupMessage(groupId, text, originalMessage) {
-    const sender = originalMessage.key.participant || originalMessage.key.remoteJid;
-    const isAdmin = CONFIG.ADMIN_NUMBERS.includes(sender);
+// ================= DETECTAR ENLACES =================
+function detectLinks(text) {
+    if (!text) return { hasLinks: false, links: [] };
     
-    // 1. BIENVENIDA AUTOMÁTICA
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('hola') || lowerText.includes('buenas') || lowerText.includes('saludos')) {
-        const userName = sender.split('@')[0];
-        await sock.sendMessage(groupId, { 
-            text: `👋 ¡Hola @${userName}! Bienvenido al grupo.` 
-        });
-    }
+    // Expresión regular para encontrar URLs
+    const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+|[^\s]+\.[a-z]{2,}(\/[^\s]*)?)/gi;
+    const matches = text.match(urlRegex) || [];
     
-    // 2. DETECTAR Y ELIMINAR ENLACES
-    const hasLink = text.includes('http') || text.includes('www.') || text.includes('.com') || text.includes('.net');
-    
-    if (hasLink && !isAdmin) {
-        let linkPermitido = false;
-        
-        // Verificar si es enlace permitido
-        for (const allowedLink of CONFIG.ALLOWED_LINKS) {
-            if (text.toLowerCase().includes(allowedLink)) {
-                linkPermitido = true;
-                break;
-            }
-        }
-        
-        // Si NO está permitido, tomar acción
-        if (!linkPermitido) {
-            console.log(`🚫 Enlace prohibido detectado de: ${sender}`);
-            
-            try {
-                // Intentar eliminar el mensaje
-                await sock.sendMessage(groupId, {
-                    delete: originalMessage.key
-                });
-                
-                console.log('✅ Mensaje eliminado');
-                
-                // Notificar en el grupo
-                const userName = sender.split('@')[0];
-                await sock.sendMessage(groupId, {
-                    text: `@${userName} 🚫 *ENLACE ELIMINADO*\n\n` +
-                          `No se permiten enlaces externos en este grupo.\n` +
-                          `Solo administradores pueden compartir enlaces.\n\n` +
-                          `📜 *Enlaces permitidos:*\n` +
-                          CONFIG.ALLOWED_LINKS.map(l => `• ${l}`).join('\n')
-                });
-                
-            } catch (deleteError) {
-                console.log('⚠️ No se pudo eliminar (bot necesita ser admin)');
-                
-                // Si no puede eliminar, al menos advertir
-                const userName = sender.split('@')[0];
-                await sock.sendMessage(groupId, {
-                    text: `@${userName} ⚠️ *ENLACE NO PERMITIDO*\n\n` +
-                          `Tu mensaje contiene enlaces no autorizados.\n` +
-                          `Por favor, no compartas enlaces externos.`
-                });
-            }
-        }
-    }
+    return {
+        hasLinks: matches.length > 0,
+        links: matches
+    };
 }
 
-// Mensaje de bienvenida
-async function sendWelcomeMessage(groupId, userNumber) {
-    try {
-        const welcomeMsg = `🎊 *¡BIENVENIDO/A AL GRUPO!* 🎊
-
-Hola @${userNumber} 👋
-
-¡Nos alegra tenerte aquí! 
-
-📜 *Reglas importantes:*
-• Respetar a todos los miembros
-• No enviar spam o enlaces no permitidos
-• Mantener conversaciones cordiales
-• Los administradores pueden eliminar contenido inapropiado
-
-💡 *Consejo:* Preséntate y cuéntanos de qué te gustaría hablar.
-
-¡Disfruta tu estadía! 😊`;
-        
-        await sock.sendMessage(groupId, { text: welcomeMsg });
-        console.log(`✅ Bienvenida enviada a ${userNumber}`);
-    } catch (error) {
-        console.error('Error enviando bienvenida:', error);
+// ================= VERIFICAR SI ES ENLACE PERMITIDO =================
+function isLinkAllowed(url) {
+    const lowerUrl = url.toLowerCase();
+    
+    // 1. Verificar si está en la lista PERMITIDA
+    for (const allowed of CONFIG.ALLOWED_LINKS) {
+        if (lowerUrl.includes(allowed)) {
+            return true; // ESTÁ PERMITIDO
+        }
     }
+    
+    // 2. Verificar si está en la lista BLOQUEADA
+    for (const blocked of CONFIG.BLOCKED_DOMAINS) {
+        if (lowerUrl.includes(blocked)) {
+            return false; // ESTÁ BLOQUEADO
+        }
+    }
+    
+    // 3. Por defecto: NO permitido (se eliminará)
+    return false;
 }
 
-// Mensaje de despedida
-async function sendGoodbyeMessage(groupId, userNumber) {
+// ================= ELIMINAR MENSAJE =================
+async function deleteMessage(groupId, message) {
     try {
+        console.log('🔄 Intentando eliminar mensaje...');
+        
+        // Método 1: Eliminación directa (si el bot es admin)
         await sock.sendMessage(groupId, {
-            text: `👋 @${userNumber} ha abandonado el grupo.\n¡Que le vaya bien! ✨`
+            delete: message.key
         });
+        
+        console.log('✅ Mensaje eliminado (método directo)');
+        return { success: true, method: 'direct' };
+        
     } catch (error) {
-        // Ignorar errores de despedida
+        console.log('⚠️ Método directo falló:', error.message);
+        
+        try {
+            // Método 2: Enviar comando de eliminación
+            await sock.sendMessage(groupId, {
+                text: `/delete ${message.key.id}`,
+                quoted: message
+            });
+            
+            console.log('✅ Comando de eliminación enviado');
+            return { success: true, method: 'command' };
+            
+        } catch (error2) {
+            console.log('⚠️ Comando también falló:', error2.message);
+            
+            // Método 3: Sobreescribir con mensaje vacío
+            await sock.sendMessage(groupId, {
+                text: '🚫 [Mensaje eliminado por contener enlace no permitido]',
+                quoted: message
+            });
+            
+            console.log('✅ Mensaje sobreescrito');
+            return { success: true, method: 'overwrite' };
+        }
     }
 }
 
-// Mantener presencia activa
-function sendPresenceUpdate() {
-    if (sock && isConnected) {
-        sock.sendPresenceUpdate('available');
+// ================= PROCESAR MENSAJES EN GRUPO =================
+async function processGroupMessage(groupId, text, originalMessage) {
+    try {
+        const sender = originalMessage.key.participant || originalMessage.key.remoteJid;
+        const userNumber = sender.split('@')[0];
+        const isAdmin = CONFIG.ADMIN_NUMBERS.includes(sender);
+        
+        // COMANDOS ESPECIALES
+        if (text.startsWith('!')) {
+            const command = text.toLowerCase().trim();
+            
+            if (command === '!bot') {
+                await sock.sendMessage(groupId, {
+                    text: '🤖 *BOT ACTIVO*\n\n' +
+                          'Funciones:\n' +
+                          '• Elimina enlaces automáticamente\n' +
+                          '• Bienvenidas automáticas\n' +
+                          '• Solo admins pueden enviar cualquier enlace\n\n' +
+                          'Comandos: !bot, !admin, !links'
+                });
+                return;
+            }
+            
+            if (command === '!admin') {
+                const response = isAdmin ? 
+                    '👑 Eres administrador' : 
+                    '❌ No eres administrador';
+                
+                await sock.sendMessage(groupId, { text: response });
+                return;
+            }
+            
+            if (command === '!links') {
+                await sock.sendMessage(groupId, {
+                    text: '✅ *Enlaces permitidos:*\n' +
+                          CONFIG.ALLOWED_LINKS.slice(0, 10).map(l => `• ${l}`).join('\n') +
+                          '\n\n❌ *Enlaces bloqueados:*\n' +
+                          CONFIG.BLOCKED_DOMAINS.slice(0, 10).map(l => `• ${l}`).join('\n')
+                });
+                return;
+            }
+            
+            if (command === '!test') {
+                await sock.sendMessage(groupId, {
+                    text: '✅ Bot funcionando correctamente\n' +
+                          'ID: ' + groupId
+                });
+                return;
+            }
+        }
+        
+        // DETECTAR ENLACES EN EL MENSAJE
+        const { hasLinks, links } = detectLinks(text);
+        
+        if (hasLinks && !isAdmin) {
+            console.log(`🔍 Enlaces detectados: ${links.length}`);
+            
+            let allLinksAllowed = true;
+            const blockedLinks = [];
+            
+            // Verificar cada enlace
+            for (const link of links) {
+                if (!isLinkAllowed(link)) {
+                    allLinksAllowed = false;
+                    blockedLinks.push(link);
+                }
+            }
+            
+            // SI HAY ENLACES NO PERMITIDOS → ELIMINAR
+            if (!allLinksAllowed && blockedLinks.length > 0) {
+                console.log(`🚫 Enlaces bloqueados: ${blockedLinks.join(', ')}`);
+                
+                // 1. Intentar eliminar el mensaje
+                const deleteResult = await deleteMessage(groupId, originalMessage);
+                
+                // 2. Notificar al usuario
+                const warningMsg = `@${userNumber} 🚫 *ENLACE ELIMINADO*\n\n` +
+                                  `Has compartido ${blockedLinks.length} enlace(s) no permitido(s).\n\n` +
+                                  `📜 *Enlaces bloqueados:*\n` +
+                                  blockedLinks.map(l => `• ${l.substring(0, 50)}`).join('\n') +
+                                  `\n\n✅ *Enlaces permitidos:*\n` +
+                                  `Sitios como YouTube, Instagram, Facebook, etc.`;
+                
+                await sock.sendMessage(groupId, { text: warningMsg });
+                
+                // 3. Notificar a los admins
+                for (const admin of CONFIG.ADMIN_NUMBERS) {
+                    try {
+                        await sock.sendMessage(admin, {
+                            text: `🚨 *ENLACE ELIMINADO*\n\n` +
+                                  `Usuario: @${userNumber}\n` +
+                                  `Grupo: ${groupId}\n` +
+                                  `Enlaces: ${blockedLinks.join(', ')}\n` +
+                                  `Método: ${deleteResult.method}`
+                        });
+                    } catch (error) {
+                        console.log('No se pudo notificar al admin:', admin);
+                    }
+                }
+                
+                console.log(`✅ Acción completada para ${userNumber}`);
+            }
+        }
+        
+    } catch (error) {
+        console.error('❌ Error procesando mensaje:', error);
     }
 }
 
-// Configurar servidor web
-let app, server, io;
-
+// ================= SERVIDOR WEB =================
 async function setupWebServer() {
     try {
         app = express();
         server = http.createServer(app);
         io = new socketIO(server, {
-            cors: {
-                origin: "*",
-                methods: ["GET", "POST"]
-            }
+            cors: { origin: "*", methods: ["GET", "POST"] }
         });
         
-        // Middleware
-        app.use(express.json());
-        app.use(express.urlencoded({ extended: true }));
-        
-        // Ruta principal con QR
+        // RUTAS
         app.get('/', (req, res) => {
             res.send(`
             <!DOCTYPE html>
-            <html lang="es">
+            <html>
             <head>
                 <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>🤖 WhatsApp Bot - Control Panel</title>
+                <title>🤖 WhatsApp Bot - Elimina Enlaces</title>
                 <style>
-                    * {
-                        margin: 0;
-                        padding: 0;
-                        box-sizing: border-box;
-                        font-family: 'Segoe UI', Arial, sans-serif;
-                    }
-                    
                     body {
+                        font-family: Arial;
                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        margin: 0;
+                        padding: 20px;
                         min-height: 100vh;
                         display: flex;
                         justify-content: center;
                         align-items: center;
-                        padding: 20px;
                     }
-                    
                     .container {
                         background: white;
-                        border-radius: 20px;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                        padding: 40px;
+                        padding: 30px;
+                        border-radius: 15px;
+                        text-align: center;
                         max-width: 500px;
                         width: 100%;
-                        text-align: center;
+                        box-shadow: 0 15px 35px rgba(0,0,0,0.3);
                     }
-                    
-                    h1 {
-                        color: #333;
-                        margin-bottom: 10px;
-                        font-size: 28px;
-                    }
-                    
-                    .subtitle {
-                        color: #666;
-                        margin-bottom: 30px;
-                        font-size: 14px;
-                    }
-                    
-                    .status-container {
-                        margin: 25px 0;
-                    }
-                    
+                    h1 { color: #333; margin-bottom: 10px; }
                     #status {
-                        background: #f0f0f0;
                         padding: 12px 25px;
-                        border-radius: 50px;
-                        display: inline-block;
+                        border-radius: 25px;
+                        margin: 20px 0;
                         font-weight: bold;
-                        color: #666;
-                        font-size: 16px;
-                        transition: all 0.3s;
+                        display: inline-block;
                     }
-                    
-                    #status.connected {
-                        background: #d4edda;
-                        color: #155724;
-                        box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
-                    }
-                    
-                    #status.disconnected {
-                        background: #f8d7da;
-                        color: #721c24;
-                    }
-                    
+                    .connected { background: #d4edda; color: #155724; }
+                    .disconnected { background: #f8d7da; color: #721c24; }
                     .qrcode-container {
-                        margin: 30px 0;
-                        padding: 25px;
+                        margin: 25px 0;
+                        padding: 20px;
                         background: #f8f9fa;
-                        border-radius: 15px;
-                        border: 3px dashed #dee2e6;
+                        border-radius: 12px;
                         min-height: 350px;
                         display: flex;
                         align-items: center;
                         justify-content: center;
                     }
-                    
-                    #qrcode img {
-                        max-width: 280px;
-                        width: 100%;
-                        height: auto;
-                        border: 8px solid white;
-                        border-radius: 10px;
-                        box-shadow: 0 8px 25px rgba(0,0,0,0.1);
-                    }
-                    
-                    .instructions {
+                    .info {
                         background: #e3f2fd;
                         padding: 20px;
-                        border-radius: 12px;
-                        margin-top: 25px;
-                        text-align: left;
-                    }
-                    
-                    .instructions h3 {
-                        color: #1565c0;
-                        margin-bottom: 15px;
-                        display: flex;
-                        align-items: center;
-                        gap: 10px;
-                    }
-                    
-                    .instructions ol {
-                        padding-left: 20px;
-                        color: #37474f;
-                    }
-                    
-                    .instructions li {
-                        margin-bottom: 10px;
-                        font-size: 14px;
-                    }
-                    
-                    .bot-info {
-                        margin-top: 25px;
-                        padding: 15px;
-                        background: #f5f5f5;
                         border-radius: 10px;
-                        font-size: 13px;
-                        color: #666;
-                    }
-                    
-                    .stats {
-                        display: flex;
-                        justify-content: space-around;
                         margin-top: 20px;
-                        font-size: 12px;
-                        color: #888;
-                    }
-                    
-                    @media (max-width: 600px) {
-                        .container {
-                            padding: 25px;
-                        }
-                        
-                        h1 {
-                            font-size: 24px;
-                        }
+                        text-align: left;
                     }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <h1>🤖 WhatsApp Bot Pro</h1>
-                    <div class="subtitle">Panel de Control - Bienvenidas Automáticas</div>
+                    <div><strong>ELIMINADOR DE ENLACES</strong></div>
                     
-                    <div class="status-container">
-                        <div id="status" class="disconnected">Desconectado</div>
-                    </div>
+                    <div id="status" class="disconnected">Desconectado</div>
                     
                     <div class="qrcode-container">
                         <div id="qrcode">
-                            <p style="color: #6c757d;">⌛ Cargando código QR...</p>
+                            <p style="color: #666;">⌛ Cargando QR...</p>
                         </div>
                     </div>
                     
-                    <div class="instructions">
-                        <h3>📱 Instrucciones:</h3>
-                        <ol>
-                            <li>Abre WhatsApp en tu teléfono</li>
-                            <li>Ve a Configuración → Dispositivos vinculados</li>
-                            <li>Selecciona "Vincular un dispositivo"</li>
-                            <li>Escanea el código QR de arriba</li>
-                            <li>¡Listo! El bot estará activo</li>
-                        </ol>
-                    </div>
-                    
-                    <div class="bot-info">
-                        <p><strong>✨ Funciones activas:</strong></p>
-                        <p>• Bienvenida automática al unirse</p>
-                        <p>• Elimina enlaces no permitidos</p>
-                        <p>• Mensaje de despedida automático</p>
-                        <p>• Solo admins pueden enviar cualquier enlace</p>
-                    </div>
-                    
-                    <div class="stats">
-                        <span>🔄 Tiempo real</span>
-                        <span>⚡ Alta velocidad</span>
-                        <span>🔒 Sesión segura</span>
+                    <div class="info">
+                        <h3>🚫 Enlaces que ELIMINA automáticamente:</h3>
+                        <ul>
+                            <li>Acortadores (bit.ly, tinyurl.com, etc.)</li>
+                            <li>Sitios sospechosos o desconocidos</li>
+                            <li>Cualquier enlace no autorizado</li>
+                        </ul>
+                        
+                        <h3>✅ Enlaces PERMITIDOS:</h3>
+                        <ul>
+                            <li>YouTube, Instagram, Facebook</li>
+                            <li>Google Drive, WhatsApp Web</li>
+                            <li>Sitios conocidos y seguros</li>
+                        </ul>
+                        
+                        <p><strong>⚠️ IMPORTANTE:</strong> El bot debe ser ADMIN del grupo para eliminar mensajes.</p>
                     </div>
                 </div>
                 
                 <script src="/socket.io/socket.io.js"></script>
                 <script>
                     const socket = io();
-                    const statusElement = document.getElementById('status');
-                    const qrcodeElement = document.getElementById('qrcode');
+                    const statusEl = document.getElementById('status');
+                    const qrcodeEl = document.getElementById('qrcode');
                     
-                    // Conectar al servidor
-                    socket.on('connect', () => {
-                        console.log('Conectado al servidor');
-                        socket.emit('get_status');
-                    });
-                    
-                    // Recibir estado
-                    socket.on('status', (status) => {
-                        statusElement.textContent = status;
-                        if (status.includes('Conectado')) {
-                            statusElement.className = 'status connected';
-                        } else {
-                            statusElement.className = 'status disconnected';
-                        }
-                    });
-                    
-                    // Recibir QR
                     socket.on('qr', (qrData) => {
-                        if (qrData) {
-                            qrcodeElement.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + encodeURIComponent(qrData) + '" alt="QR Code">';
-                        } else {
-                            qrcodeElement.innerHTML = '<div style="text-align: center;"><div style="color: #4caf50; font-size: 50px; margin: 20px;">✓</div><p style="color: #388e3c; font-weight: bold; font-size: 18px;">✅ Bot conectado</p><p style="color: #666; margin-top: 10px;">Sesión activa y funcionando</p></div>';
-                        }
+                        qrcodeEl.innerHTML = '<img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=' + 
+                                            encodeURIComponent(qrData) + '" style="max-width:100%;">';
+                        statusEl.textContent = '📱 Escanea el QR';
+                        statusEl.className = 'disconnected';
                     });
                     
-                    // Recibir estado de conexión
                     socket.on('connected', (connected) => {
                         if (connected) {
-                            statusElement.textContent = '✅ Conectado a WhatsApp';
-                            statusElement.className = 'status connected';
+                            statusEl.textContent = '✅ Conectado a WhatsApp';
+                            statusEl.className = 'connected';
+                            qrcodeEl.innerHTML = '<div style="color:#4caf50;font-size:50px;">✓</div>' +
+                                                '<p style="color:#388e3c;font-weight:bold;">Bot activo</p>' +
+                                                '<p>Eliminando enlaces automáticamente</p>';
                         }
                     });
                     
-                    // Manejar desconexión
-                    socket.on('disconnect', () => {
-                        statusElement.textContent = 'Desconectado del servidor';
-                        statusElement.className = 'status disconnected';
+                    socket.on('status', (status) => {
+                        statusEl.textContent = status;
                     });
-                    
-                    // Solicitar estado cada 30 segundos
-                    setInterval(() => {
-                        socket.emit('get_status');
-                    }, 30000);
                 </script>
             </body>
             </html>
             `);
         });
         
-        // Health check para Render
         app.get('/health', (req, res) => {
             res.json({
                 status: isConnected ? 'connected' : 'disconnected',
-                timestamp: new Date().toISOString(),
-                qr_available: !!currentQR,
-                uptime: process.uptime()
+                timestamp: new Date().toISOString()
             });
         });
         
-        // WebSocket events
+        // WEBSOCKET
         io.on('connection', (socket) => {
-            console.log('👤 Nuevo cliente conectado');
-            
-            // Enviar estado actual
             socket.emit('status', isConnected ? 'Conectado ✓' : 'Desconectado');
-            if (currentQR) {
-                socket.emit('qr', currentQR);
-                socket.emit('status', 'Escanea el QR');
-            }
-            if (isConnected) {
-                socket.emit('connected', true);
-            }
-            
-            socket.on('get_status', () => {
-                socket.emit('status', isConnected ? 'Conectado ✓' : 'Desconectado');
-                if (currentQR) socket.emit('qr', currentQR);
-                socket.emit('connected', isConnected);
-            });
-            
-            socket.on('disconnect', () => {
-                console.log('👤 Cliente desconectado');
-            });
+            if (currentQR) socket.emit('qr', currentQR);
+            socket.emit('connected', isConnected);
         });
         
-        // Iniciar servidor
+        // INICIAR SERVIDOR
         server.listen(CONFIG.PORT, () => {
-            console.log(`🚀 Servidor web iniciado en puerto ${CONFIG.PORT}`);
-            console.log(`🌐 URL: http://localhost:${CONFIG.PORT}`);
-            console.log(`🔧 Health check: http://localhost:${CONFIG.PORT}/health`);
+            console.log(`🚀 Servidor: http://localhost:${CONFIG.PORT}`);
+            console.log(`🔧 Health: http://localhost:${CONFIG.PORT}/health`);
         });
         
         return true;
     } catch (error) {
-        console.error('❌ Error configurando servidor web:', error);
+        console.error('❌ Error servidor web:', error);
         return false;
     }
 }
 
-// Tarea cron para mantener activo
-function setupCronJobs() {
-    // Enviar presencia cada minuto
-    cron.schedule('* * * * *', () => {
-        if (isConnected) {
-            sendPresenceUpdate();
-        }
-    });
-    
-    console.log('⏰ Tareas cron configuradas');
-}
-
-// Función principal
+// ================= INICIAR TODO =================
 async function main() {
-    console.log('🚀 INICIANDO WHATSAPP BOT...');
-    console.log('===============================');
+    console.log('🚀 INICIANDO BOT WHATSAPP...');
+    console.log('================================');
     
-    // 1. Crear directorio auth
-    await ensureAuthDir();
-    
-    // 2. Cargar módulos
-    const modulesLoaded = await loadModules();
-    if (!modulesLoaded) {
-        console.error('❌ No se pudieron cargar los módulos necesarios');
+    // 1. Cargar módulos
+    if (!await loadModules()) {
+        console.error('❌ No se pudieron cargar módulos');
         process.exit(1);
     }
     
-    // 3. Configurar servidor web
-    const serverReady = await setupWebServer();
-    if (!serverReady) {
-        console.error('❌ No se pudo iniciar el servidor web');
+    // 2. Iniciar servidor web
+    if (!await setupWebServer()) {
+        console.error('❌ No se pudo iniciar servidor web');
         process.exit(1);
     }
     
-    // 4. Configurar tareas cron
-    setupCronJobs();
-    
-    // 5. Conectar a WhatsApp
+    // 3. Conectar a WhatsApp
     await connectToWhatsApp();
     
-    // 6. Manejar cierre limpio
-    process.on('SIGINT', gracefulShutdown);
-    process.on('SIGTERM', gracefulShutdown);
+    // 4. Manejar cierre
+    process.on('SIGINT', () => {
+        console.log('\n🔻 Apagando...');
+        process.exit(0);
+    });
     
     console.log('✅ Bot completamente inicializado');
-    console.log('📱 Esperando conexión de WhatsApp...');
 }
 
-// Apagado limpio
-function gracefulShutdown() {
-    console.log('\n🔻 Recibida señal de apagado...');
-    
-    if (sock) {
-        console.log('Desconectando de WhatsApp...');
-        // sock.end() si está disponible
-    }
-    
-    if (server) {
-        console.log('Cerrando servidor web...');
-        server.close(() => {
-            console.log('✅ Servidor cerrado correctamente');
-            process.exit(0);
-        });
-    } else {
-        process.exit(0);
-    }
-}
-
-// Iniciar la aplicación
+// EJECUTAR
 main().catch(error => {
-    console.error('❌ Error fatal en la aplicación:', error);
+    console.error('❌ Error fatal:', error);
     process.exit(1);
 });
