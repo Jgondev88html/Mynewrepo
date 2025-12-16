@@ -5,7 +5,7 @@ const http = require('http');
 const socketIO = require('socket.io');
 
 // Configuración
-const ADMIN_NUMBERS = ['5351808981@c.us'];
+const ADMIN_NUMBERS = ['5351808981@c.us']; // TU NÚMERO
 const ALLOWED_LINKS = ['youtube.com', 'instagram.com', 'facebook.com', 'drive.google.com'];
 
 // Crear servidor web
@@ -14,7 +14,7 @@ const server = http.createServer(app);
 const io = socketIO(server);
 const PORT = process.env.PORT || 3000;
 
-// Variables para el QR
+// Variables
 let qrImage = null;
 let botConnected = false;
 
@@ -46,7 +46,62 @@ client.on('ready', () => {
     io.emit('connected', true);
 });
 
-// Procesar mensajes (igual que antes)
+// SOLUCIÓN: Esta función SÍ puede eliminar mensajes de otros
+async function eliminarMensaje(chat, message) {
+    try {
+        // Intentar eliminar como admin
+        if (chat.isGroup) {
+            const chatObj = await client.getChatById(chat.id._serialized);
+            
+            // Verificar si el bot es admin
+            const participants = await chatObj.participants;
+            const botParticipant = participants.find(p => p.id._serialized === client.info.wid._serialized);
+            
+            if (botParticipant && botParticipant.isAdmin) {
+                // El bot es admin, puede eliminar
+                await message.delete(true);
+                console.log(`✅ Mensaje eliminado por admin`);
+                return true;
+            } else {
+                // El bot NO es admin, advertir y mencionar admins
+                console.log(`⚠️ Bot no es admin, no puede eliminar`);
+                
+                // Encontrar admins del grupo
+                const admins = participants.filter(p => p.isAdmin).map(p => p.id._serialized);
+                
+                // Notificar a todos los admins
+                for (const adminId of admins) {
+                    try {
+                        await client.sendMessage(adminId, 
+                            `🚫 *ENLACE NO PERMITIDO*\n\n` +
+                            `Usuario: @${message.author.split('@')[0]}\n` +
+                            `Mensaje: ${message.body.substring(0, 50)}...\n` +
+                            `Grupo: ${chat.name}\n\n` +
+                            `⚠️ *Elimina este mensaje manualmente*`
+                        );
+                    } catch (e) {
+                        console.log('No se pudo notificar al admin:', adminId);
+                    }
+                }
+                
+                // Advertir al usuario que envió el enlace
+                await message.reply(
+                    `@${message.author.split('@')[0]} 🚫 *ENLACE NO PERMITIDO*\n\n` +
+                    `Tu mensaje será revisado por los administradores.\n` +
+                    `Solo se permiten enlaces de:\n` +
+                    ALLOWED_LINKS.map(l => `• ${l}`).join('\n')
+                );
+                
+                return false;
+            }
+        }
+    } catch (error) {
+        console.log('❌ Error al intentar eliminar:', error.message);
+        return false;
+    }
+}
+
+// Procesar mensajes CORREGIDO
 client.on('message', async (message) => {
     if (message.fromMe) return;
     
@@ -58,26 +113,35 @@ client.on('message', async (message) => {
     
     if (isGroup) {
         // Bienvenida
-        if (text.toLowerCase().includes('hola')) {
+        if (text.toLowerCase().includes('hola') || text.toLowerCase().includes('holis')) {
             await message.reply('👋 ¡Bienvenido al grupo!');
         }
         
-        // Eliminar enlaces
+        // Detectar enlaces (excepto admin)
         if (!isAdmin && (text.includes('http') || text.includes('www.') || text.includes('.com'))) {
             let isAllowed = false;
             for (const allowed of ALLOWED_LINKS) {
-                if (text.includes(allowed)) {
+                if (text.toLowerCase().includes(allowed)) {
                     isAllowed = true;
                     break;
                 }
             }
             
             if (!isAllowed) {
-                try {
-                    await message.delete(true);
-                    await message.reply('🚫 Enlace eliminado. Solo admins pueden enviar links.');
-                } catch (error) {
-                    console.log('Error eliminando mensaje');
+                console.log(`🚫 Enlace detectado de ${sender}: ${text.substring(0, 50)}...`);
+                
+                // Intentar eliminar el mensaje
+                const eliminado = await eliminarMensaje(chat, message);
+                
+                if (!eliminado) {
+                    // Si no se pudo eliminar, advertir en el grupo
+                    await message.reply(
+                        `🚫 *ADVERTENCIA*\n\n` +
+                        `@${sender.split('@')[0]} envió un enlace no permitido.\n` +
+                        `Los administradores han sido notificados.\n\n` +
+                        `📜 Enlaces permitidos:\n` +
+                        ALLOWED_LINKS.map(l => `• ${l}`).join('\n')
+                    );
                 }
             }
         }
@@ -98,7 +162,7 @@ client.on('disconnected', () => {
     setTimeout(() => client.initialize(), 10000);
 });
 
-// Página web con QR
+// Página web con QR (igual que antes)
 app.get('/', (req, res) => {
     res.send(`
     <!DOCTYPE html>
@@ -181,17 +245,17 @@ app.get('/', (req, res) => {
             </div>
             
             <div class="instructions">
-                <h3>Instrucciones:</h3>
+                <h3>⚠️ IMPORTANTE:</h3>
+                <p>Para que el bot pueda eliminar mensajes:</p>
                 <ol>
-                    <li>Abre WhatsApp en tu teléfono</li>
-                    <li>Configuración → Dispositivos vinculados</li>
-                    <li>"Vincular un dispositivo"</li>
-                    <li>Escanea el código QR</li>
+                    <li>El bot DEBE ser administrador del grupo</li>
+                    <li>Agrega el bot como admin en cada grupo</li>
+                    <li>Solo así podrá eliminar enlaces</li>
                 </ol>
             </div>
             
             <div style="margin-top: 20px; font-size: 12px; color: #666;">
-                Bot activo | Elimina enlaces automáticamente
+                Funciones: Elimina enlaces + Da bienvenidas
             </div>
         </div>
         
@@ -232,5 +296,6 @@ app.get('/', (req, res) => {
 server.listen(PORT, () => {
     console.log(`🌐 Servidor: http://localhost:${PORT}`);
     console.log(`📱 Abre esa URL para escanear el QR`);
+    console.log(`⚠️ IMPORTANTE: El bot DEBE ser ADMIN de los grupos`);
     client.initialize();
 });
