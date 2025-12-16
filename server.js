@@ -214,9 +214,7 @@ Hola @${userNumber} 👋
 • Respetar a todos
 • No spam ni enlaces sospechosos
 • Los enlaces serán eliminados automáticamente
-• Los admins pueden compartir cualquier enlace
-
-¡Disfruta tu estadía! 😊`;
+`;
                         
                         if (sock) {
                             await sock.sendMessage(id, { text: welcomeMsg });
@@ -330,7 +328,6 @@ async function processGroupMessage(groupId, text, originalMessage) {
                           'Funciones:\n' +
                           '• Elimina enlaces automáticamente\n' +
                           '• Bienvenidas automáticas\n' +
-                          '• Solo admins pueden enviar cualquier enlace\n\n' +
                           'Comandos: !bot, !admin, !links'
                 });
                 return;
@@ -405,7 +402,6 @@ async function processGroupMessage(groupId, text, originalMessage) {
                             text: `🚨 *ENLACE ELIMINADO*\n\n` +
                                   `Usuario: @${userNumber}\n` +
                                   `Grupo: ${groupId}\n` +
-                                  `Enlaces: ${blockedLinks.join(', ')}\n` +
                                   `Método: ${deleteResult.method}`
                         });
                     } catch (error) {
