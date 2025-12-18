@@ -11,7 +11,7 @@ const CONFIG = {
         'youtube.com', 'youtu.be',
         'instagram.com', 'facebook.com',
         'twitter.com', 'x.com',
-        'tiktok.com', 'whatsapp.com',
+        'tiktok.com',
         'drive.google.com', 'docs.google.com',
         'github.com', 'wikipedia.org'
     ],
@@ -20,7 +20,7 @@ const CONFIG = {
     BLOCKED_DOMAINS: [
         'bit.ly', 'short.url', 'tinyurl.com',
         'ow.ly', 't.co', 'goo.gl', 'is.gd',
-        'buff.ly', 'adf.ly', 'shorte.st'
+        'buff.ly', 'whatsapp.com', 'adf.ly', 'shorte.st'
     ],
     
     // CONFIGURACIÓN DE RENDER
